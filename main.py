@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from flask import Flask, send_from_directory
 from flask_cors import CORS
 
@@ -41,9 +42,20 @@ try:
         TimeSlot.create_default_slots()
         AdminUser.create_default_admin()
         
+    print("✅ Database and API routes initialized successfully")
+        
 except Exception as e:
-    print(f"Error during initialization: {e}")
+    print(f"❌ Error during initialization: {e}")
     # Continue without database for basic functionality
+
+# Add a test route to verify API is working
+@app.route('/api/test')
+def api_test():
+    return {
+        "message": "API is working!",
+        "timestamp": datetime.now().isoformat(),
+        "status": "success"
+    }, 200
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -67,6 +79,7 @@ def health_check():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    print(f"Starting HEMS Scheduler on port {port}")
+    print(f"🚀 Starting HEMS Scheduler on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
