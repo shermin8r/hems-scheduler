@@ -3,6 +3,9 @@ import sqlite3
 from datetime import datetime
 from flask import Flask, send_from_directory, jsonify, request
 from flask_cors import CORS
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = 'asdf#FGSgvasgf$5$WGT'
@@ -74,37 +77,24 @@ def ensure_database_and_data():
             )
         ''')
         
-        # Check if we have any active quarters for 2026
-        cursor.execute('SELECT COUNT(*) FROM quarters WHERE year = 2026 AND is_active = 1')
-        quarter_count = cursor.fetchone()[0]
+        # Create admin_users table if it doesn't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS admin_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                email TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         
-        if quarter_count == 0:
-            # Create 2026 MCES quarters (February, May, August, November)
-            # Using placeholder dates - user will update these later
-            quarters_2026 = [
-                (2026, 1, '2026-02-15'),  # February meeting
-                (2026, 2, '2026-05-15'),  # May meeting  
-                (2026, 3, '2026-08-15'),  # August meeting
-                (2026, 4, '2026-11-15'),  # November meeting
-            ]
-            
-            for year, quarter_num, meeting_date in quarters_2026:
-                cursor.execute('''
-                    INSERT INTO quarters (year, quarter_number, meeting_date, is_active)
-                    VALUES (?, ?, ?, ?)
-                ''', (year, quarter_num, meeting_date, 1))
-                
-                quarter_id = cursor.lastrowid
-                
-                # Create lecture slots for this quarter
-                cursor.execute('SELECT id FROM time_slots')
-                time_slot_ids = [row[0] for row in cursor.fetchall()]
-                
-                for time_slot_id in time_slot_ids:
-                    cursor.execute('''
-                        INSERT INTO lecture_slots (quarter_id, time_slot_id, is_available)
-                        VALUES (?, ?, ?)
-                    ''', (quarter_id, time_slot_id, 1))
+        # Create default admin user if it doesn't exist
+        cursor.execute('SELECT COUNT(*) FROM admin_users WHERE username = ?', ('admin',))
+        if cursor.fetchone()[0] == 0:
+            cursor.execute('''
+                INSERT INTO admin_users (username, password_hash, email)
+                VALUES (?, ?, ?)
+            ''', ('admin', 'admin123', 'admin@example.com'))  # Simple password for now
         
         # Ensure we have the standard time slots with clean formatting
         cursor.execute('SELECT COUNT(*) FROM time_slots')
@@ -122,34 +112,11 @@ def ensure_database_and_data():
                 INSERT INTO time_slots (start_time, end_time, slot_name)
                 VALUES (?, ?, ?)
             ''', time_slots)
-        else:
-            # Update existing time slots to clean format if needed
-            cursor.execute('''
-                UPDATE time_slots 
-                SET start_time = CASE 
-                    WHEN start_time LIKE '%09:00%' THEN '09:00'
-                    WHEN start_time LIKE '%10:00%' THEN '10:00'
-                    WHEN start_time LIKE '%11:00%' THEN '11:00'
-                    ELSE start_time
-                END,
-                end_time = CASE 
-                    WHEN end_time LIKE '%10:00%' THEN '10:00'
-                    WHEN end_time LIKE '%11:00%' THEN '11:00'
-                    WHEN end_time LIKE '%12:00%' THEN '12:00'
-                    ELSE end_time
-                END,
-                slot_name = CASE 
-                    WHEN slot_name LIKE '%Morning Session%' AND start_time LIKE '%09:00%' THEN 'Morning Session'
-                    WHEN slot_name LIKE '%Mid-Morning%' OR (start_time LIKE '%10:00%' AND slot_name LIKE '%Morning%') THEN 'Mid-Morning Session'
-                    WHEN slot_name LIKE '%Late Morning%' OR (start_time LIKE '%11:00%' AND slot_name LIKE '%Morning%') THEN 'Late Morning Session'
-                    ELSE slot_name
-                END
-            ''')
         
         conn.commit()
         conn.close()
         
-        print("✅ Database initialized successfully with 2026 MCES quarters")
+        print("✅ Database initialized successfully")
         return True
         
     except Exception as e:
@@ -159,7 +126,39 @@ def ensure_database_and_data():
 # Initialize database on startup
 ensure_database_and_data()
 
-# Logging middleware to see what the frontend is requesting
+def send_notification_email(registration_data, quarter_info, slot_info):
+    """Send email notification when someone registers"""
+    try:
+        # This is a placeholder - you'll need to configure with your email settings
+        # For now, we'll just log the notification
+        print(f"""
+        📧 EMAIL NOTIFICATION:
+        =====================
+        New speaker registration!
+        
+        Speaker: {registration_data['speaker_name']}
+        Email: {registration_data['speaker_email']}
+        Phone: {registration_data.get('speaker_phone', 'Not provided')}
+        Specialty: {registration_data.get('specialty', 'Not provided')}
+        
+        Meeting: {quarter_info['name']}
+        Date: {quarter_info['meeting_date']}
+        Time Slot: {slot_info['time_display']}
+        
+        Topic: {registration_data['topic_title']}
+        Description: {registration_data.get('topic_description', 'Not provided')}
+        
+        Registered at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        =====================
+        """)
+        
+        # TODO: Configure actual email sending
+        # You can set up SMTP settings here when ready
+        
+    except Exception as e:
+        print(f"Error sending notification: {e}")
+
+# Logging middleware
 @app.before_request
 def log_request_info():
     if request.path.startswith('/api/'):
@@ -215,68 +214,294 @@ def get_quarters_data():
         print(f"Error getting quarters: {e}")
         return []
 
-# ALL POSSIBLE ENDPOINTS THE FRONTEND MIGHT CALL
+# ADMIN ENDPOINTS
 
-@app.route('/api/quarters', methods=['GET'])
-def get_all_quarters():
-    """Get all quarters - main endpoint"""
-    quarters = get_quarters_data()
-    print(f"Returning {len(quarters)} quarters from /api/quarters")
-    return jsonify(quarters), 200
+@app.route('/api/admin/login', methods=['POST'])
+def admin_login():
+    """Simple admin login"""
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT id, email FROM admin_users WHERE username = ? AND password_hash = ?', 
+                      (username, password))
+        user = cursor.fetchone()
+        
+        conn.close()
+        
+        if user:
+            return jsonify({
+                'success': True,
+                'message': 'Login successful',
+                'user_id': user[0],
+                'email': user[1]
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid credentials'
+            }), 401
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Login error: {str(e)}'
+        }), 500
 
-@app.route('/api/quarters/active', methods=['GET'])
-def get_active_quarters():
-    """Get active quarters - alternative endpoint"""
-    quarters = get_quarters_data()
-    print(f"Returning {len(quarters)} quarters from /api/quarters/active")
-    return jsonify(quarters), 200
-
-@app.route('/api/quarter', methods=['GET'])
-def get_quarter_singular():
-    """Get quarters - singular form endpoint"""
-    quarters = get_quarters_data()
-    print(f"Returning {len(quarters)} quarters from /api/quarter")
-    return jsonify(quarters), 200
-
-@app.route('/api/meetings', methods=['GET'])
-def get_meetings():
-    """Get meetings - alternative name"""
-    quarters = get_quarters_data()
-    print(f"Returning {len(quarters)} quarters from /api/meetings")
-    return jsonify(quarters), 200
-
-@app.route('/api/meetings/active', methods=['GET'])
-def get_active_meetings():
-    """Get active meetings - alternative name"""
-    quarters = get_quarters_data()
-    print(f"Returning {len(quarters)} quarters from /api/meetings/active")
-    return jsonify(quarters), 200
-
-@app.route('/api/quarterly-meetings', methods=['GET'])
-def get_quarterly_meetings():
-    """Get quarterly meetings - full name"""
-    quarters = get_quarters_data()
-    print(f"Returning {len(quarters)} quarters from /api/quarterly-meetings")
-    return jsonify(quarters), 200
-
-@app.route('/api/quarterly-meetings/active', methods=['GET'])
-def get_active_quarterly_meetings():
-    """Get active quarterly meetings - full name"""
-    quarters = get_quarters_data()
-    print(f"Returning {len(quarters)} quarters from /api/quarterly-meetings/active")
-    return jsonify(quarters), 200
-
-@app.route('/api/quarters/<int:quarter_id>/slots', methods=['GET'])
-def get_quarter_slots(quarter_id):
-    """Get available slots for a specific quarter with clean time formatting"""
+@app.route('/api/admin/registrations', methods=['GET'])
+def get_all_registrations():
+    """Get all speaker registrations for admin view"""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT ls.id, ls.is_available, ts.start_time, ts.end_time, ts.slot_name
+            SELECT 
+                sr.id,
+                sr.speaker_name,
+                sr.speaker_email,
+                sr.speaker_phone,
+                sr.specialty,
+                sr.topic_title,
+                sr.topic_description,
+                sr.registered_at,
+                sr.status,
+                q.year,
+                q.quarter_number,
+                q.meeting_date,
+                ts.start_time,
+                ts.end_time,
+                ts.slot_name
+            FROM speaker_registrations sr
+            JOIN lecture_slots ls ON sr.lecture_slot_id = ls.id
+            JOIN quarters q ON ls.quarter_id = q.id
+            JOIN time_slots ts ON ls.time_slot_id = ts.id
+            ORDER BY q.year DESC, q.quarter_number ASC, ts.start_time ASC
+        ''')
+        
+        registrations = cursor.fetchall()
+        
+        # Map quarter numbers to months
+        quarter_months = {1: 'February', 2: 'May', 3: 'August', 4: 'November'}
+        
+        registration_list = []
+        for reg in registrations:
+            month_name = quarter_months.get(reg[10], f'Q{reg[10]}')
+            quarter_name = f"{month_name} {reg[9]} - MCES Education"
+            
+            # Clean time formatting
+            start_time = reg[12]
+            end_time = reg[13]
+            if ':' in start_time:
+                start_time = ':'.join(start_time.split(':')[:2])
+            if ':' in end_time:
+                end_time = ':'.join(end_time.split(':')[:2])
+            
+            registration_list.append({
+                'id': reg[0],
+                'speaker_name': reg[1],
+                'speaker_email': reg[2],
+                'speaker_phone': reg[3],
+                'specialty': reg[4],
+                'topic_title': reg[5],
+                'topic_description': reg[6],
+                'registered_at': reg[7],
+                'status': reg[8],
+                'quarter_name': quarter_name,
+                'meeting_date': reg[11],
+                'time_slot': f"{start_time} - {end_time}",
+                'slot_name': reg[14]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'registrations': registration_list,
+            'count': len(registration_list)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Error getting registrations: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+@app.route('/api/admin/registrations/quarter/<int:quarter_id>', methods=['GET'])
+def get_quarter_registrations(quarter_id):
+    """Get registrations for a specific quarter"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                sr.speaker_name,
+                sr.speaker_email,
+                sr.speaker_phone,
+                sr.specialty,
+                sr.topic_title,
+                sr.topic_description,
+                sr.registered_at,
+                ts.start_time,
+                ts.end_time,
+                ts.slot_name
+            FROM speaker_registrations sr
+            JOIN lecture_slots ls ON sr.lecture_slot_id = ls.id
+            JOIN time_slots ts ON ls.time_slot_id = ts.id
+            WHERE ls.quarter_id = ?
+            ORDER BY ts.start_time ASC
+        ''', (quarter_id,))
+        
+        registrations = cursor.fetchall()
+        
+        registration_list = []
+        for reg in registrations:
+            # Clean time formatting
+            start_time = reg[7]
+            end_time = reg[8]
+            if ':' in start_time:
+                start_time = ':'.join(start_time.split(':')[:2])
+            if ':' in end_time:
+                end_time = ':'.join(end_time.split(':')[:2])
+            
+            registration_list.append({
+                'speaker_name': reg[0],
+                'speaker_email': reg[1],
+                'speaker_phone': reg[2],
+                'specialty': reg[3],
+                'topic_title': reg[4],
+                'topic_description': reg[5],
+                'registered_at': reg[6],
+                'time_slot': f"{start_time} - {end_time}",
+                'slot_name': reg[9]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'registrations': registration_list,
+            'count': len(registration_list)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Error getting quarter registrations: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+@app.route('/api/admin/export/csv', methods=['GET'])
+def export_registrations_csv():
+    """Export all registrations as CSV data"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                sr.speaker_name,
+                sr.speaker_email,
+                sr.speaker_phone,
+                sr.specialty,
+                sr.topic_title,
+                sr.topic_description,
+                sr.registered_at,
+                q.year,
+                q.quarter_number,
+                q.meeting_date,
+                ts.start_time,
+                ts.end_time,
+                ts.slot_name
+            FROM speaker_registrations sr
+            JOIN lecture_slots ls ON sr.lecture_slot_id = ls.id
+            JOIN quarters q ON ls.quarter_id = q.id
+            JOIN time_slots ts ON ls.time_slot_id = ts.id
+            ORDER BY q.year DESC, q.quarter_number ASC, ts.start_time ASC
+        ''')
+        
+        registrations = cursor.fetchall()
+        
+        # Create CSV content
+        csv_content = "Speaker Name,Email,Phone,Specialty,Topic Title,Topic Description,Registered At,Year,Quarter,Meeting Date,Time Slot,Slot Name\n"
+        
+        quarter_months = {1: 'February', 2: 'May', 3: 'August', 4: 'November'}
+        
+        for reg in registrations:
+            # Clean time formatting
+            start_time = reg[10]
+            end_time = reg[11]
+            if ':' in start_time:
+                start_time = ':'.join(start_time.split(':')[:2])
+            if ':' in end_time:
+                end_time = ':'.join(end_time.split(':')[:2])
+            
+            month_name = quarter_months.get(reg[8], f'Q{reg[8]}')
+            time_slot = f"{start_time} - {end_time}"
+            
+            # Escape commas and quotes in CSV
+            row = [
+                f'"{reg[0]}"',  # speaker_name
+                f'"{reg[1]}"',  # speaker_email
+                f'"{reg[2] or ""}"',  # speaker_phone
+                f'"{reg[3] or ""}"',  # specialty
+                f'"{reg[4]}"',  # topic_title
+                f'"{reg[5] or ""}"',  # topic_description
+                f'"{reg[6]}"',  # registered_at
+                str(reg[7]),    # year
+                month_name,     # quarter
+                f'"{reg[9]}"',  # meeting_date
+                time_slot,      # time_slot
+                f'"{reg[12]}"'  # slot_name
+            ]
+            csv_content += ','.join(row) + '\n'
+        
+        conn.close()
+        
+        return jsonify({
+            'csv_data': csv_content,
+            'filename': f'MCES_Registrations_{datetime.now().strftime("%Y%m%d")}.csv'
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Error exporting CSV: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+# EXISTING ENDPOINTS (quarters, slots, registrations)
+
+@app.route('/api/quarters', methods=['GET'])
+def get_all_quarters():
+    quarters = get_quarters_data()
+    return jsonify(quarters), 200
+
+@app.route('/api/quarters/active', methods=['GET'])
+def get_active_quarters():
+    quarters = get_quarters_data()
+    return jsonify(quarters), 200
+
+@app.route('/api/quarters/<int:quarter_id>/slots', methods=['GET'])
+def get_quarter_slots(quarter_id):
+    """Get available slots for a specific quarter with registration info"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                ls.id, 
+                ls.is_available, 
+                ts.start_time, 
+                ts.end_time, 
+                ts.slot_name,
+                sr.speaker_name,
+                sr.topic_title
             FROM lecture_slots ls
             JOIN time_slots ts ON ls.time_slot_id = ts.id
+            LEFT JOIN speaker_registrations sr ON ls.id = sr.lecture_slot_id
             WHERE ls.quarter_id = ?
             ORDER BY ts.start_time
         ''', (quarter_id,))
@@ -285,31 +510,35 @@ def get_quarter_slots(quarter_id):
         
         slot_list = []
         for slot in slots:
-            # Clean time formatting - ensure HH:MM format
+            # Clean time formatting
             start_time = slot[2]
             end_time = slot[3]
-            
-            # Format times to HH:MM if they have extra precision
             if ':' in start_time:
                 start_time = ':'.join(start_time.split(':')[:2])
             if ':' in end_time:
                 end_time = ':'.join(end_time.split(':')[:2])
             
-            slot_list.append({
+            slot_info = {
                 'lecture_slot_id': slot[0],
                 'is_available': bool(slot[1]),
                 'start_time': start_time,
                 'end_time': end_time,
                 'slot_name': slot[4],
                 'time_display': f"{start_time} - {end_time}"
-            })
+            }
+            
+            # Add speaker info if slot is taken
+            if not slot[1] and slot[5]:  # not available and has speaker
+                slot_info['speaker_name'] = slot[5]
+                slot_info['topic_title'] = slot[6]
+                slot_info['status'] = 'booked'
+            
+            slot_list.append(slot_info)
         
         conn.close()
-        print(f"Returning {len(slot_list)} slots for quarter {quarter_id}")
         return jsonify(slot_list), 200
         
     except Exception as e:
-        print(f"Error getting slots for quarter {quarter_id}: {e}")
         return jsonify({
             'message': f'Error getting slots: {str(e)}',
             'error_type': type(e).__name__
@@ -317,7 +546,7 @@ def get_quarter_slots(quarter_id):
 
 @app.route('/api/registrations', methods=['POST'])
 def create_registration():
-    """Handle speaker registration"""
+    """Handle speaker registration with notification"""
     try:
         data = request.get_json()
         print(f"Registration attempt: {data}")
@@ -330,11 +559,15 @@ def create_registration():
         
         # Check if the slot is still available
         cursor.execute('''
-            SELECT is_available FROM lecture_slots WHERE id = ?
+            SELECT ls.is_available, q.year, q.quarter_number, q.meeting_date, ts.start_time, ts.end_time
+            FROM lecture_slots ls
+            JOIN quarters q ON ls.quarter_id = q.id
+            JOIN time_slots ts ON ls.time_slot_id = ts.id
+            WHERE ls.id = ?
         ''', (data.get('lecture_slot_id'),))
         
-        slot = cursor.fetchone()
-        if not slot or not slot[0]:
+        slot_info = cursor.fetchone()
+        if not slot_info or not slot_info[0]:
             conn.close()
             return jsonify({'message': 'Selected time slot is no longer available'}), 400
         
@@ -362,6 +595,29 @@ def create_registration():
         conn.commit()
         conn.close()
         
+        # Send notification
+        quarter_months = {1: 'February', 2: 'May', 3: 'August', 4: 'November'}
+        month_name = quarter_months.get(slot_info[2], f'Q{slot_info[2]}')
+        
+        quarter_info = {
+            'name': f"{month_name} {slot_info[1]} - MCES Education",
+            'meeting_date': slot_info[3]
+        }
+        
+        # Clean time formatting
+        start_time = slot_info[4]
+        end_time = slot_info[5]
+        if ':' in start_time:
+            start_time = ':'.join(start_time.split(':')[:2])
+        if ':' in end_time:
+            end_time = ':'.join(end_time.split(':')[:2])
+        
+        slot_display = {
+            'time_display': f"{start_time} - {end_time}"
+        }
+        
+        send_notification_email(data, quarter_info, slot_display)
+        
         print(f"Registration successful for {data.get('speaker_name')}")
         return jsonify({
             'message': 'Registration successful!',
@@ -375,77 +631,12 @@ def create_registration():
             'error_type': type(e).__name__
         }), 500
 
-@app.route('/api/quarters/create-2026', methods=['GET', 'POST'])
-def create_2026_quarters():
-    """Create 2026 MCES quarters with proper schedule"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Delete existing 2026 quarters
-        cursor.execute('DELETE FROM lecture_slots WHERE quarter_id IN (SELECT id FROM quarters WHERE year = 2026)')
-        cursor.execute('DELETE FROM quarters WHERE year = 2026')
-        
-        # Create 2026 MCES quarters
-        quarters_2026 = [
-            (2026, 1, '2026-02-15', 'February'),  # February meeting
-            (2026, 2, '2026-05-15', 'May'),      # May meeting  
-            (2026, 3, '2026-08-15', 'August'),   # August meeting
-            (2026, 4, '2026-11-15', 'November'), # November meeting
-        ]
-        
-        created_quarters = []
-        
-        for year, quarter_num, meeting_date, month_name in quarters_2026:
-            cursor.execute('''
-                INSERT INTO quarters (year, quarter_number, meeting_date, is_active)
-                VALUES (?, ?, ?, ?)
-            ''', (year, quarter_num, meeting_date, 1))
-            
-            quarter_id = cursor.lastrowid
-            
-            # Get time slot IDs
-            cursor.execute('SELECT id FROM time_slots')
-            time_slot_ids = [row[0] for row in cursor.fetchall()]
-            
-            # Create lecture slots for this quarter
-            for time_slot_id in time_slot_ids:
-                cursor.execute('''
-                    INSERT INTO lecture_slots (quarter_id, time_slot_id, is_available)
-                    VALUES (?, ?, ?)
-                ''', (quarter_id, time_slot_id, 1))
-            
-            created_quarters.append({
-                'id': quarter_id,
-                'name': f"{month_name} {year} - MCES Education",
-                'meeting_date': meeting_date,
-                'slots_created': len(time_slot_ids)
-            })
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            'message': '🎉 SUCCESS! 2026 MCES quarters created!',
-            'quarters': created_quarters,
-            'count': len(created_quarters),
-            'schedule': 'February, May, August, November 2026'
-        }), 201
-        
-    except Exception as e:
-        return jsonify({
-            'message': f'Error creating 2026 quarters: {str(e)}',
-            'error_type': type(e).__name__
-        }), 500
-
 @app.route('/api/test')
 def api_test():
     return {
         "message": "MCES Quarterly Education Series API is working!",
         "timestamp": datetime.now().isoformat(),
-        "status": "success",
-        "database_path": DB_PATH,
-        "database_exists": os.path.exists(DB_PATH)
+        "status": "success"
     }, 200
 
 @app.route('/', defaults={'path': ''})
