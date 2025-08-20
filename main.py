@@ -3,9 +3,6 @@ import sqlite3
 from datetime import datetime
 from flask import Flask, send_from_directory, jsonify, request
 from flask_cors import CORS
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = 'asdf#FGSgvasgf$5$WGT'
@@ -17,7 +14,7 @@ CORS(app, origins="*")
 DB_PATH = os.path.join(os.path.dirname(__file__), 'database', 'app.db')
 
 def ensure_database_and_data():
-    """Ensure database exists with proper structure and 2026 MCES data"""
+    """Ensure database exists with proper structure and admin user"""
     try:
         # Create database directory if it doesn't exist
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -88,13 +85,14 @@ def ensure_database_and_data():
             )
         ''')
         
-        # Create default admin user if it doesn't exist
-        cursor.execute('SELECT COUNT(*) FROM admin_users WHERE username = ?', ('admin',))
-        if cursor.fetchone()[0] == 0:
-            cursor.execute('''
-                INSERT INTO admin_users (username, password_hash, email)
-                VALUES (?, ?, ?)
-            ''', ('admin', 'admin123', 'admin@example.com'))  # Simple password for now
+        # Ensure admin user exists with correct credentials
+        cursor.execute('DELETE FROM admin_users WHERE username = ?', ('admin',))
+        cursor.execute('''
+            INSERT INTO admin_users (username, password_hash, email)
+            VALUES (?, ?, ?)
+        ''', ('admin', 'admin123', 'admin@mces.edu'))
+        
+        print("✅ Admin user created: admin / admin123")
         
         # Ensure we have the standard time slots with clean formatting
         cursor.execute('SELECT COUNT(*) FROM time_slots')
@@ -112,6 +110,8 @@ def ensure_database_and_data():
                 INSERT INTO time_slots (start_time, end_time, slot_name)
                 VALUES (?, ?, ?)
             ''', time_slots)
+            
+            print("✅ Time slots created")
         
         conn.commit()
         conn.close()
@@ -129,8 +129,6 @@ ensure_database_and_data()
 def send_notification_email(registration_data, quarter_info, slot_info):
     """Send email notification when someone registers"""
     try:
-        # This is a placeholder - you'll need to configure with your email settings
-        # For now, we'll just log the notification
         print(f"""
         📧 EMAIL NOTIFICATION:
         =====================
@@ -151,9 +149,6 @@ def send_notification_email(registration_data, quarter_info, slot_info):
         Registered at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         =====================
         """)
-        
-        # TODO: Configure actual email sending
-        # You can set up SMTP settings here when ready
         
     except Exception as e:
         print(f"Error sending notification: {e}")
@@ -218,14 +213,35 @@ def get_quarters_data():
 
 @app.route('/api/admin/login', methods=['POST'])
 def admin_login():
-    """Simple admin login"""
+    """Simple admin login with debugging"""
     try:
         data = request.get_json()
-        username = data.get('username')
-        password = data.get('password')
+        print(f"Login attempt received: {data}")
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'message': 'No login data provided'
+            }), 400
+        
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        
+        print(f"Login credentials - Username: '{username}', Password provided: {bool(password)}")
+        
+        if not username or not password:
+            return jsonify({
+                'success': False,
+                'message': 'Username and password are required'
+            }), 400
         
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
+        
+        # Check what admin users exist
+        cursor.execute('SELECT username, password_hash FROM admin_users')
+        all_users = cursor.fetchall()
+        print(f"Available admin users: {all_users}")
         
         cursor.execute('SELECT id, email FROM admin_users WHERE username = ? AND password_hash = ?', 
                       (username, password))
@@ -234,6 +250,7 @@ def admin_login():
         conn.close()
         
         if user:
+            print(f"Login successful for user: {username}")
             return jsonify({
                 'success': True,
                 'message': 'Login successful',
@@ -241,15 +258,42 @@ def admin_login():
                 'email': user[1]
             }), 200
         else:
+            print(f"Login failed for user: {username}")
             return jsonify({
                 'success': False,
-                'message': 'Invalid credentials'
+                'message': 'Invalid username or password'
             }), 401
             
     except Exception as e:
+        print(f"Login error: {e}")
         return jsonify({
             'success': False,
             'message': f'Login error: {str(e)}'
+        }), 500
+
+@app.route('/api/admin/test', methods=['GET'])
+def admin_test():
+    """Test admin functionality"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT username, password_hash, email FROM admin_users')
+        users = cursor.fetchall()
+        
+        conn.close()
+        
+        return jsonify({
+            'message': 'Admin test successful',
+            'admin_users': [{'username': u[0], 'password': u[1], 'email': u[2]} for u in users],
+            'database_path': DB_PATH,
+            'database_exists': os.path.exists(DB_PATH)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Admin test error: {str(e)}',
+            'error_type': type(e).__name__
         }), 500
 
 @app.route('/api/admin/registrations', methods=['GET'])
@@ -327,69 +371,6 @@ def get_all_registrations():
     except Exception as e:
         return jsonify({
             'message': f'Error getting registrations: {str(e)}',
-            'error_type': type(e).__name__
-        }), 500
-
-@app.route('/api/admin/registrations/quarter/<int:quarter_id>', methods=['GET'])
-def get_quarter_registrations(quarter_id):
-    """Get registrations for a specific quarter"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT 
-                sr.speaker_name,
-                sr.speaker_email,
-                sr.speaker_phone,
-                sr.specialty,
-                sr.topic_title,
-                sr.topic_description,
-                sr.registered_at,
-                ts.start_time,
-                ts.end_time,
-                ts.slot_name
-            FROM speaker_registrations sr
-            JOIN lecture_slots ls ON sr.lecture_slot_id = ls.id
-            JOIN time_slots ts ON ls.time_slot_id = ts.id
-            WHERE ls.quarter_id = ?
-            ORDER BY ts.start_time ASC
-        ''', (quarter_id,))
-        
-        registrations = cursor.fetchall()
-        
-        registration_list = []
-        for reg in registrations:
-            # Clean time formatting
-            start_time = reg[7]
-            end_time = reg[8]
-            if ':' in start_time:
-                start_time = ':'.join(start_time.split(':')[:2])
-            if ':' in end_time:
-                end_time = ':'.join(end_time.split(':')[:2])
-            
-            registration_list.append({
-                'speaker_name': reg[0],
-                'speaker_email': reg[1],
-                'speaker_phone': reg[2],
-                'specialty': reg[3],
-                'topic_title': reg[4],
-                'topic_description': reg[5],
-                'registered_at': reg[6],
-                'time_slot': f"{start_time} - {end_time}",
-                'slot_name': reg[9]
-            })
-        
-        conn.close()
-        
-        return jsonify({
-            'registrations': registration_list,
-            'count': len(registration_list)
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            'message': f'Error getting quarter registrations: {str(e)}',
             'error_type': type(e).__name__
         }), 500
 
@@ -663,3 +644,4 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"🚀 Starting MCES Quarterly Education Series Scheduler on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
