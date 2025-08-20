@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCES Quarterly Education Series Scheduler</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: #2563eb;
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .nav-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 40px;
+        }
+        
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn:hover {
+            background: #1d4ed8;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        
+        .section {
+            display: none;
+        }
+        
+        .section.active {
+            display: block;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #374151;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 6px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #2563eb;
+        }
+        
+        .time-slots {
+            display: grid;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .time-slot {
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .time-slot:hover {
+            border-color: #2563eb;
+            background: #f8fafc;
+        }
+        
+        .time-slot.selected {
+            border-color: #2563eb;
+            background: #eff6ff;
+        }
+        
+        .time-slot.unavailable {
+            background: #f3f4f6;
+            color: #6b7280;
+            cursor: not-allowed;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-success {
+            background: #d1fae5;
+            border: 1px solid #a7f3d0;
+            color: #065f46;
+        }
+        
+        .alert-error {
+            background: #fee2e2;
+            border: 1px solid #fca5a5;
+            color: #991b1b;
+        }
+        
+        .alert-info {
+            background: #dbeafe;
+            border: 1px solid #93c5fd;
+            color: #1e40af;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+        
+        .back-btn {
+            margin-bottom: 20px;
+        }
+        
+        .step {
+            margin-bottom: 30px;
+        }
+        
+        .step h3 {
+            color: #374151;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>MCES Quarterly Education Series Scheduler</h1>
+            <p>Register to present at upcoming MCES quarterly education meetings</p>
+        </div>
+        
+        <div class="content">
+            <!-- Home Section -->
+            <div id="home" class="section active">
+                <div class="nav-buttons">
+                    <button class="btn" onclick="showSection('register')">Register as Speaker</button>
+                    <button class="btn btn-secondary" onclick="showSection('admin')">Admin Access</button>
+                </div>
+                
+                <div id="home-info">
+                    <div class="alert alert-info">
+                        <strong>Welcome to the MCES Quarterly Education Series Scheduler!</strong><br>
+                        This system allows medical specialists to register for speaking slots at our quarterly education meetings.
+                        Each meeting has three time slots available (09:00-10:00, 10:00-11:00, 11:00-12:00), and the system prevents double-booking automatically.
+                        <br><br>
+                        <strong>2026 Meeting Schedule:</strong> February, May, August, and November
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Registration Section -->
+            <div id="register" class="section">
+                <button class="btn btn-secondary back-btn" onclick="showSection('home')">← Back to Home</button>
+                
+                <h2>Speaker Registration</h2>
+                <p>Register to present at an upcoming MCES quarterly education meeting</p>
+                
+                <div id="registration-content">
+                    <div class="loading" id="loading">
+                        Loading available meetings...
+                    </div>
+                    
+                    <div id="no-meetings" style="display: none;">
+                        <div class="alert alert-error">
+                            No active quarterly meetings available at this time.
+                        </div>
+                    </div>
+                    
+                    <div id="registration-form" style="display: none;">
+                        <div class="step">
+                            <h3>📅 Step 1: Select Quarterly Meeting</h3>
+                            <div class="form-group">
+                                <label for="quarter-select">Choose which quarterly meeting you'd like to present at:</label>
+                                <select id="quarter-select" onchange="loadTimeSlots()">
+                                    <option value="">Select a meeting...</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="step" id="time-slot-step" style="display: none;">
+                            <h3>🕒 Step 2: Select Time Slot</h3>
+                            <div id="time-slots-container">
+                                <!-- Time slots will be loaded here -->
+                            </div>
+                        </div>
+                        
+                        <div class="step" id="speaker-info-step" style="display: none;">
+                            <h3>👤 Step 3: Speaker Information</h3>
+                            <form id="speaker-form">
+                                <div class="form-group">
+                                    <label for="speaker-name">Full Name *</label>
+                                    <input type="text" id="speaker-name" required>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="speaker-email">Email Address *</label>
+                                    <input type="email" id="speaker-email" required>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="speaker-phone">Phone Number</label>
+                                    <input type="tel" id="speaker-phone">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="specialty">Medical Specialty *</label>
+                                    <input type="text" id="specialty" required>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="topic-title">Presentation Topic *</label>
+                                    <input type="text" id="topic-title" required>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="topic-description">Topic Description</label>
+                                    <textarea id="topic-description" rows="4" placeholder="Brief description of your presentation topic..."></textarea>
+                                </div>
+                                
+                                <button type="submit" class="btn">Complete Registration</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="registration-success" style="display: none;">
+                    <div class="alert alert-success">
+                        <h3>🎉 Registration Successful!</h3>
+                        <p>Thank you for registering to speak at our MCES quarterly education meeting. You will receive a confirmation email shortly with all the details.</p>
+                    </div>
+                    <button class="btn" onclick="resetRegistration()">Register Another Speaker</button>
+                </div>
+            </div>
+            
+            <!-- Admin Section -->
+            <div id="admin" class="section">
+                <button class="btn btn-secondary back-btn" onclick="showSection('home')">← Back to Home</button>
+                
+                <h2>Admin Access</h2>
+                <div class="alert alert-info">
+                    <strong>Admin functionality is currently being updated.</strong><br>
+                    For now, quarters can be managed through the API endpoints. Contact your system administrator for assistance with creating new quarterly meetings.
+                    <br><br>
+                    <strong>2026 Schedule:</strong> Meetings will be held in February, May, August, and November. Specific dates to be determined.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedQuarter = null;
+        let selectedSlot = null;
+        let quarters = [];
+        
+        // Utility function to format time strings
+        function formatTime(timeString) {
+            if (!timeString) return '';
+            
+            // Handle various time formats
+            if (timeString.includes(':')) {
+                // Extract just the hour and minute part (HH:MM)
+                const parts = timeString.split(':');
+                if (parts.length >= 2) {
+                    const hour = parts[0].padStart(2, '0');
+                    const minute = parts[1].padStart(2, '0');
+                    return `${hour}:${minute}`;
+                }
+            }
+            
+            return timeString;
+        }
+        
+        // Show/hide sections
+        function showSection(sectionName) {
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.remove('active');
+            });
+            document.getElementById(sectionName).classList.add('active');
+            
+            if (sectionName === 'register') {
+                loadQuarters();
+            }
+        }
+        
+        // Load available quarters
+        async function loadQuarters() {
+            try {
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('no-meetings').style.display = 'none';
+                document.getElementById('registration-form').style.display = 'none';
+                
+                console.log('Loading quarters from API...');
+                
+                // Try multiple endpoints to ensure we get the data
+                const endpoints = ['/api/quarters', '/api/quarters/active', '/api/meetings', '/api/quarterly-meetings'];
+                let response = null;
+                
+                for (const endpoint of endpoints) {
+                    try {
+                        console.log(`Trying endpoint: ${endpoint}`);
+                        response = await fetch(endpoint);
+                        if (response.ok) {
+                            quarters = await response.json();
+                            console.log(`Success from ${endpoint}:`, quarters);
+                            if (quarters && quarters.length > 0) {
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        console.log(`Failed ${endpoint}:`, e);
+                        continue;
+                    }
+                }
+                
+                document.getElementById('loading').style.display = 'none';
+                
+                if (!quarters || quarters.length === 0) {
+                    console.log('No quarters found');
+                    document.getElementById('no-meetings').style.display = 'block';
+                    return;
+                }
+                
+                console.log('Populating quarter select with:', quarters);
+                
+                // Populate quarter select
+                const quarterSelect = document.getElementById('quarter-select');
+                quarterSelect.innerHTML = '<option value="">Select a meeting...</option>';
+                
+                quarters.forEach(quarter => {
+                    const option = document.createElement('option');
+                    option.value = quarter.id;
+                    
+                    // Create a more readable quarter name
+                    let quarterName = quarter.name || `Q${quarter.quarter_number} ${quarter.year} - MCES Education`;
+                    quarterName = quarterName.replace('HEMS', 'MCES');
+                    
+                    option.textContent = `${quarterName} - ${quarter.meeting_date} (${quarter.available_slots} slots available)`;
+                    quarterSelect.appendChild(option);
+                });
+                
+                document.getElementById('registration-form').style.display = 'block';
+                
+            } catch (error) {
+                console.error('Error loading quarters:', error);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('no-meetings').style.display = 'block';
+            }
+        }
+        
+        // Load time slots for selected quarter
+        async function loadTimeSlots() {
+            const quarterSelect = document.getElementById('quarter-select');
+            const quarterId = quarterSelect.value;
+            
+            if (!quarterId) {
+                document.getElementById('time-slot-step').style.display = 'none';
+                document.getElementById('speaker-info-step').style.display = 'none';
+                return;
+            }
+            
+            selectedQuarter = quarters.find(q => q.id == quarterId);
+            
+            try {
+                console.log(`Loading slots for quarter ${quarterId}`);
+                const response = await fetch(`/api/quarters/${quarterId}/slots`);
+                const slots = await response.json();
+                
+                console.log('Loaded slots:', slots);
+                
+                const container = document.getElementById('time-slots-container');
+                container.innerHTML = '';
+                
+                if (!slots || slots.length === 0) {
+                    container.innerHTML = '<div class="alert alert-error">No time slots available for this meeting.</div>';
+                    return;
+                }
+                
+                slots.forEach(slot => {
+                    const slotDiv = document.createElement('div');
+                    slotDiv.className = `time-slot ${slot.is_available ? '' : 'unavailable'}`;
+                    
+                    // Format the time display
+                    const startTime = formatTime(slot.start_time);
+                    const endTime = formatTime(slot.end_time);
+                    const timeDisplay = `${startTime} - ${endTime}`;
+                    
+                    // Clean up slot name
+                    let slotName = slot.slot_name || '';
+                    if (slotName.includes('(')) {
+                        slotName = slotName.split('(')[0].trim();
+                    }
+                    
+                    slotDiv.innerHTML = `
+                        <strong>${timeDisplay}</strong><br>
+                        <span>${slotName}</span><br>
+                        <small>${slot.is_available ? 'Available' : 'Already booked'}</small>
+                    `;
+                    
+                    if (slot.is_available) {
+                        slotDiv.onclick = () => selectTimeSlot(slot, slotDiv);
+                    }
+                    
+                    container.appendChild(slotDiv);
+                });
+                
+                document.getElementById('time-slot-step').style.display = 'block';
+                
+            } catch (error) {
+                console.error('Error loading time slots:', error);
+                document.getElementById('time-slots-container').innerHTML = 
+                    '<div class="alert alert-error">Error loading time slots. Please try again.</div>';
+            }
+        }
+        
+        // Select time slot
+        function selectTimeSlot(slot, element) {
+            // Remove previous selection
+            document.querySelectorAll('.time-slot').forEach(el => {
+                el.classList.remove('selected');
+            });
+            
+            // Select this slot
+            element.classList.add('selected');
+            selectedSlot = slot;
+            
+            // Show speaker info step
+            document.getElementById('speaker-info-step').style.display = 'block';
+        }
+        
+        // Handle form submission
+        document.getElementById('speaker-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!selectedSlot) {
+                alert('Please select a time slot first.');
+                return;
+            }
+            
+            const formData = {
+                lecture_slot_id: selectedSlot.lecture_slot_id,
+                speaker_name: document.getElementById('speaker-name').value,
+                speaker_email: document.getElementById('speaker-email').value,
+                speaker_phone: document.getElementById('speaker-phone').value,
+                specialty: document.getElementById('specialty').value,
+                topic_title: document.getElementById('topic-title').value,
+                topic_description: document.getElementById('topic-description').value
+            };
+            
+            try {
+                console.log('Submitting registration:', formData);
+                
+                const response = await fetch('/api/registrations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    console.log('Registration successful:', result);
+                    document.getElementById('registration-content').style.display = 'none';
+                    document.getElementById('registration-success').style.display = 'block';
+                } else {
+                    console.error('Registration failed:', result);
+                    alert(`Registration failed: ${result.message}`);
+                }
+                
+            } catch (error) {
+                console.error('Error submitting registration:', error);
+                alert('Error submitting registration. Please try again.');
+            }
+        });
+        
+        // Reset registration form
+        function resetRegistration() {
+            document.getElementById('registration-content').style.display = 'block';
+            document.getElementById('registration-success').style.display = 'none';
+            document.getElementById('speaker-form').reset();
+            document.getElementById('quarter-select').value = '';
+            document.getElementById('time-slot-step').style.display = 'none';
+            document.getElementById('speaker-info-step').style.display = 'none';
+            selectedQuarter = null;
+            selectedSlot = null;
+            loadQuarters();
+        }
+        
+        // Initialize
+        console.log('MCES Quarterly Education Series Scheduler initialized');
+    </script>
+</body>
+</html>
+
