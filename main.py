@@ -57,25 +57,8 @@ def ensure_database_and_data():
             )
         ''')
         
-        # Create speaker_registrations table if it doesn't exist
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS speaker_registrations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                lecture_slot_id INTEGER NOT NULL,
-                speaker_name TEXT NOT NULL,
-                speaker_email TEXT NOT NULL,
-                speaker_phone TEXT,
-                specialty TEXT,
-                topic_title TEXT NOT NULL,
-                topic_description TEXT,
-                registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                status TEXT DEFAULT 'confirmed',
-                FOREIGN KEY (lecture_slot_id) REFERENCES lecture_slots (id)
-            )
-        ''')
-        
         # Check if we have any quarters
-        cursor.execute('SELECT COUNT(*) FROM quarters')
+        cursor.execute('SELECT COUNT(*) FROM quarters WHERE is_active = 1')
         quarter_count = cursor.fetchone()[0]
         
         if quarter_count == 0:
@@ -86,7 +69,6 @@ def ensure_database_and_data():
             ''', (2025, 1, '2025-03-15', 1))
             
             quarter_id = cursor.lastrowid
-            print(f"Created quarter with ID: {quarter_id}")
             
             # Check if we have time slots
             cursor.execute('SELECT COUNT(*) FROM time_slots')
@@ -104,8 +86,6 @@ def ensure_database_and_data():
                     INSERT INTO time_slots (start_time, end_time, slot_name)
                     VALUES (?, ?, ?)
                 ''', time_slots)
-                
-                print("Created default time slots")
             
             # Get time slot IDs
             cursor.execute('SELECT id FROM time_slots')
@@ -117,13 +97,10 @@ def ensure_database_and_data():
                     INSERT INTO lecture_slots (quarter_id, time_slot_id, is_available)
                     VALUES (?, ?, ?)
                 ''', (quarter_id, time_slot_id, 1))
-            
-            print(f"Created {len(time_slot_ids)} lecture slots")
         
         conn.commit()
         conn.close()
         
-        print("✅ Database initialization completed successfully")
         return True
         
     except Exception as e:
@@ -133,141 +110,18 @@ def ensure_database_and_data():
 # Initialize database on startup
 ensure_database_and_data()
 
-@app.route('/api/database/debug', methods=['GET'])
-def database_debug():
-    """Debug endpoint to see what's in the database"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        debug_info = {
-            'database_path': DB_PATH,
-            'database_exists': os.path.exists(DB_PATH)
-        }
-        
-        if os.path.exists(DB_PATH):
-            # Get all tables
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-            tables = [row[0] for row in cursor.fetchall()]
-            debug_info['tables'] = tables
-            
-            # Get quarters data
-            if 'quarters' in tables:
-                cursor.execute('SELECT * FROM quarters')
-                quarters_data = cursor.fetchall()
-                cursor.execute("PRAGMA table_info(quarters);")
-                quarters_columns = [col[1] for col in cursor.fetchall()]
-                debug_info['quarters'] = {
-                    'columns': quarters_columns,
-                    'data': quarters_data,
-                    'count': len(quarters_data)
-                }
-            
-            # Get time_slots data
-            if 'time_slots' in tables:
-                cursor.execute('SELECT * FROM time_slots')
-                slots_data = cursor.fetchall()
-                debug_info['time_slots'] = {
-                    'data': slots_data,
-                    'count': len(slots_data)
-                }
-            
-            # Get lecture_slots data
-            if 'lecture_slots' in tables:
-                cursor.execute('SELECT * FROM lecture_slots')
-                lecture_slots_data = cursor.fetchall()
-                debug_info['lecture_slots'] = {
-                    'data': lecture_slots_data,
-                    'count': len(lecture_slots_data)
-                }
-        
-        conn.close()
-        return jsonify(debug_info), 200
-        
-    except Exception as e:
-        return jsonify({
-            'error': str(e),
-            'database_path': DB_PATH
-        }), 500
+# Logging middleware to see what the frontend is requesting
+@app.before_request
+def log_request_info():
+    if request.path.startswith('/api/'):
+        print(f"API Request: {request.method} {request.path}")
+        if request.args:
+            print(f"Query params: {dict(request.args)}")
+        if request.is_json and request.get_json():
+            print(f"JSON body: {request.get_json()}")
 
-@app.route('/api/quarters/force-create', methods=['GET', 'POST'])
-def force_create_quarter():
-    """Force create a quarter with debug information"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Delete existing quarters first (for testing)
-        cursor.execute('DELETE FROM lecture_slots')
-        cursor.execute('DELETE FROM quarters')
-        cursor.execute('DELETE FROM time_slots')
-        
-        # Insert Q1 2025 quarter
-        cursor.execute('''
-            INSERT INTO quarters (year, quarter_number, meeting_date, is_active)
-            VALUES (?, ?, ?, ?)
-        ''', (2025, 1, '2025-03-15', 1))
-        
-        quarter_id = cursor.lastrowid
-        
-        # Insert time slots
-        time_slots = [
-            ('09:00', '10:00', 'Morning Session'),
-            ('10:00', '11:00', 'Mid-Morning Session'),
-            ('11:00', '12:00', 'Late Morning Session')
-        ]
-        
-        cursor.executemany('''
-            INSERT INTO time_slots (start_time, end_time, slot_name)
-            VALUES (?, ?, ?)
-        ''', time_slots)
-        
-        # Get time slot IDs
-        cursor.execute('SELECT id FROM time_slots')
-        time_slot_ids = [row[0] for row in cursor.fetchall()]
-        
-        # Create lecture slots
-        for time_slot_id in time_slot_ids:
-            cursor.execute('''
-                INSERT INTO lecture_slots (quarter_id, time_slot_id, is_available)
-                VALUES (?, ?, ?)
-            ''', (quarter_id, time_slot_id, 1))
-        
-        conn.commit()
-        
-        # Verify creation
-        cursor.execute('SELECT * FROM quarters WHERE id = ?', (quarter_id,))
-        quarter_data = cursor.fetchone()
-        
-        cursor.execute('''
-            SELECT ls.id, ts.start_time, ts.end_time, ts.slot_name, ls.is_available
-            FROM lecture_slots ls
-            JOIN time_slots ts ON ls.time_slot_id = ts.id
-            WHERE ls.quarter_id = ?
-        ''', (quarter_id,))
-        slots_data = cursor.fetchall()
-        
-        conn.close()
-        
-        return jsonify({
-            'message': '🎉 SUCCESS! Quarter force-created with debug info',
-            'quarter_id': quarter_id,
-            'quarter_data': quarter_data,
-            'slots_created': len(slots_data),
-            'slots_data': slots_data,
-            'database_path': DB_PATH
-        }), 201
-        
-    except Exception as e:
-        return jsonify({
-            'message': f'Error force-creating quarter: {str(e)}',
-            'error_type': type(e).__name__,
-            'database_path': DB_PATH
-        }), 500
-
-@app.route('/api/quarters', methods=['GET'])
-def get_all_quarters():
-    """Get all quarters - this is what the frontend calls"""
+def get_quarters_data():
+    """Common function to get quarters data in the format the frontend expects"""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -299,18 +153,230 @@ def get_all_quarters():
             })
         
         conn.close()
-        return jsonify(quarter_list), 200
+        return quarter_list
         
     except Exception as e:
-        return jsonify({
-            'message': f'Error getting quarters: {str(e)}',
-            'error_type': type(e).__name__
-        }), 500
+        print(f"Error getting quarters: {e}")
+        return []
+
+# ALL POSSIBLE ENDPOINTS THE FRONTEND MIGHT CALL
+
+@app.route('/api/quarters', methods=['GET'])
+def get_all_quarters():
+    """Get all quarters - main endpoint"""
+    quarters = get_quarters_data()
+    print(f"Returning {len(quarters)} quarters from /api/quarters")
+    return jsonify(quarters), 200
 
 @app.route('/api/quarters/active', methods=['GET'])
 def get_active_quarters():
-    """Get active quarters"""
-    return get_all_quarters()  # Same logic for now
+    """Get active quarters - alternative endpoint"""
+    quarters = get_quarters_data()
+    print(f"Returning {len(quarters)} quarters from /api/quarters/active")
+    return jsonify(quarters), 200
+
+@app.route('/api/quarter', methods=['GET'])
+def get_quarter_singular():
+    """Get quarters - singular form endpoint"""
+    quarters = get_quarters_data()
+    print(f"Returning {len(quarters)} quarters from /api/quarter")
+    return jsonify(quarters), 200
+
+@app.route('/api/meetings', methods=['GET'])
+def get_meetings():
+    """Get meetings - alternative name"""
+    quarters = get_quarters_data()
+    print(f"Returning {len(quarters)} quarters from /api/meetings")
+    return jsonify(quarters), 200
+
+@app.route('/api/meetings/active', methods=['GET'])
+def get_active_meetings():
+    """Get active meetings - alternative name"""
+    quarters = get_quarters_data()
+    print(f"Returning {len(quarters)} quarters from /api/meetings/active")
+    return jsonify(quarters), 200
+
+@app.route('/api/quarterly-meetings', methods=['GET'])
+def get_quarterly_meetings():
+    """Get quarterly meetings - full name"""
+    quarters = get_quarters_data()
+    print(f"Returning {len(quarters)} quarters from /api/quarterly-meetings")
+    return jsonify(quarters), 200
+
+@app.route('/api/quarterly-meetings/active', methods=['GET'])
+def get_active_quarterly_meetings():
+    """Get active quarterly meetings - full name"""
+    quarters = get_quarters_data()
+    print(f"Returning {len(quarters)} quarters from /api/quarterly-meetings/active")
+    return jsonify(quarters), 200
+
+@app.route('/api/quarters/<int:quarter_id>/slots', methods=['GET'])
+def get_quarter_slots(quarter_id):
+    """Get available slots for a specific quarter"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT ls.id, ls.is_available, ts.start_time, ts.end_time, ts.slot_name
+            FROM lecture_slots ls
+            JOIN time_slots ts ON ls.time_slot_id = ts.id
+            WHERE ls.quarter_id = ?
+            ORDER BY ts.start_time
+        ''', (quarter_id,))
+        
+        slots = cursor.fetchall()
+        
+        slot_list = []
+        for slot in slots:
+            slot_list.append({
+                'lecture_slot_id': slot[0],
+                'is_available': bool(slot[1]),
+                'start_time': slot[2],
+                'end_time': slot[3],
+                'slot_name': slot[4],
+                'time_display': f"{slot[2]} - {slot[3]}"
+            })
+        
+        conn.close()
+        print(f"Returning {len(slot_list)} slots for quarter {quarter_id}")
+        return jsonify(slot_list), 200
+        
+    except Exception as e:
+        print(f"Error getting slots for quarter {quarter_id}: {e}")
+        return jsonify({
+            'message': f'Error getting slots: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+@app.route('/api/registrations', methods=['POST'])
+def create_registration():
+    """Handle speaker registration"""
+    try:
+        data = request.get_json()
+        print(f"Registration attempt: {data}")
+        
+        if not data:
+            return jsonify({'message': 'No data provided'}), 400
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check if the slot is still available
+        cursor.execute('''
+            SELECT is_available FROM lecture_slots WHERE id = ?
+        ''', (data.get('lecture_slot_id'),))
+        
+        slot = cursor.fetchone()
+        if not slot or not slot[0]:
+            conn.close()
+            return jsonify({'message': 'Selected time slot is no longer available'}), 400
+        
+        # Create the registration
+        cursor.execute('''
+            INSERT INTO speaker_registrations 
+            (lecture_slot_id, speaker_name, speaker_email, speaker_phone, specialty, topic_title, topic_description, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            data.get('lecture_slot_id'),
+            data.get('speaker_name'),
+            data.get('speaker_email'),
+            data.get('speaker_phone'),
+            data.get('specialty'),
+            data.get('topic_title'),
+            data.get('topic_description'),
+            'confirmed'
+        ))
+        
+        # Mark the slot as unavailable
+        cursor.execute('''
+            UPDATE lecture_slots SET is_available = 0 WHERE id = ?
+        ''', (data.get('lecture_slot_id'),))
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"Registration successful for {data.get('speaker_name')}")
+        return jsonify({
+            'message': 'Registration successful!',
+            'status': 'confirmed'
+        }), 201
+        
+    except Exception as e:
+        print(f"Registration error: {e}")
+        return jsonify({
+            'message': f'Error creating registration: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+# DEBUG ENDPOINTS
+
+@app.route('/api/debug/requests', methods=['GET'])
+def debug_requests():
+    """Show what requests have been made"""
+    return jsonify({
+        'message': 'Check server logs for request information',
+        'available_endpoints': [
+            '/api/quarters',
+            '/api/quarters/active', 
+            '/api/quarter',
+            '/api/meetings',
+            '/api/meetings/active',
+            '/api/quarterly-meetings',
+            '/api/quarterly-meetings/active',
+            '/api/quarters/{id}/slots',
+            '/api/registrations'
+        ]
+    }), 200
+
+@app.route('/api/database/debug', methods=['GET'])
+def database_debug():
+    """Debug endpoint to see what's in the database"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        debug_info = {
+            'database_path': DB_PATH,
+            'database_exists': os.path.exists(DB_PATH)
+        }
+        
+        if os.path.exists(DB_PATH):
+            # Get quarters data
+            cursor.execute('SELECT * FROM quarters')
+            quarters_data = cursor.fetchall()
+            cursor.execute("PRAGMA table_info(quarters);")
+            quarters_columns = [col[1] for col in cursor.fetchall()]
+            debug_info['quarters'] = {
+                'columns': quarters_columns,
+                'data': quarters_data,
+                'count': len(quarters_data)
+            }
+            
+            # Get time_slots data
+            cursor.execute('SELECT * FROM time_slots')
+            slots_data = cursor.fetchall()
+            debug_info['time_slots'] = {
+                'data': slots_data,
+                'count': len(slots_data)
+            }
+            
+            # Get lecture_slots data
+            cursor.execute('SELECT * FROM lecture_slots')
+            lecture_slots_data = cursor.fetchall()
+            debug_info['lecture_slots'] = {
+                'data': lecture_slots_data,
+                'count': len(lecture_slots_data)
+            }
+        
+        conn.close()
+        return jsonify(debug_info), 200
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'database_path': DB_PATH
+        }), 500
 
 @app.route('/api/test')
 def api_test():
@@ -321,41 +387,6 @@ def api_test():
         "database_path": DB_PATH,
         "database_exists": os.path.exists(DB_PATH)
     }, 200
-
-@app.route('/api/quarters/check', methods=['GET'])
-def check_quarters():
-    """Check what quarters exist"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT id, year, quarter_number, meeting_date, is_active FROM quarters')
-        quarters = cursor.fetchall()
-        
-        quarter_list = []
-        for q in quarters:
-            quarter_list.append({
-                'id': q[0],
-                'year': q[1],
-                'quarter_number': q[2],
-                'meeting_date': q[3],
-                'is_active': bool(q[4]),
-                'name': f"Q{q[2]} {q[1]} - HEMS Education"
-            })
-        
-        conn.close()
-        
-        return jsonify({
-            'message': f'Found {len(quarters)} quarter(s)',
-            'quarters': quarter_list,
-            'count': len(quarters)
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            'message': f'Error checking quarters: {str(e)}',
-            'error_type': type(e).__name__
-        }), 500
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -381,3 +412,4 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"🚀 Starting HEMS Scheduler on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
