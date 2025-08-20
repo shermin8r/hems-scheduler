@@ -209,6 +209,189 @@ def get_quarters_data():
         print(f"Error getting quarters: {e}")
         return []
 
+# RESET ENDPOINTS
+
+@app.route('/api/admin/reset-registrations', methods=['GET'])
+def reset_registrations():
+    """Clear all speaker registrations and make slots available again"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Count existing registrations
+        cursor.execute('SELECT COUNT(*) FROM speaker_registrations')
+        registration_count = cursor.fetchone()[0]
+        
+        # Delete all speaker registrations
+        cursor.execute('DELETE FROM speaker_registrations')
+        
+        # Mark all lecture slots as available
+        cursor.execute('UPDATE lecture_slots SET is_available = 1')
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"✅ Reset: Cleared {registration_count} registrations")
+        
+        return jsonify({
+            'message': f'🎉 SUCCESS! System reset complete!',
+            'cleared_registrations': registration_count,
+            'status': 'All time slots are now available',
+            'quarters_preserved': 'Your 2026 quarters remain intact',
+            'next_step': 'Ready for real speaker registrations!'
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Error resetting registrations: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+@app.route('/api/admin/reset-all', methods=['GET'])
+def reset_all():
+    """Complete system reset - clear everything and recreate 2026 quarters"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Count what we're deleting
+        cursor.execute('SELECT COUNT(*) FROM speaker_registrations')
+        registration_count = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT COUNT(*) FROM quarters')
+        quarter_count = cursor.fetchone()[0]
+        
+        # Delete all data
+        cursor.execute('DELETE FROM speaker_registrations')
+        cursor.execute('DELETE FROM lecture_slots')
+        cursor.execute('DELETE FROM quarters')
+        
+        # Recreate 2026 quarters
+        quarters_data = [
+            (2026, 1, '2026-02-15'),  # February
+            (2026, 2, '2026-05-15'),  # May
+            (2026, 3, '2026-08-15'),  # August
+            (2026, 4, '2026-11-15')   # November
+        ]
+        
+        created_quarters = []
+        
+        for year, quarter_num, meeting_date in quarters_data:
+            # Insert quarter
+            cursor.execute('''
+                INSERT INTO quarters (year, quarter_number, meeting_date, is_active)
+                VALUES (?, ?, ?, 1)
+            ''', (year, quarter_num, meeting_date))
+            
+            quarter_id = cursor.lastrowid
+            
+            # Get time slots
+            cursor.execute('SELECT id FROM time_slots ORDER BY start_time')
+            time_slots = cursor.fetchall()
+            
+            # Create lecture slots for this quarter
+            slots_created = 0
+            for time_slot in time_slots:
+                cursor.execute('''
+                    INSERT INTO lecture_slots (quarter_id, time_slot_id, is_available)
+                    VALUES (?, ?, 1)
+                ''', (quarter_id, time_slot[0]))
+                slots_created += 1
+            
+            # Map quarter number to month name
+            month_names = {1: 'February', 2: 'May', 3: 'August', 4: 'November'}
+            month_name = month_names.get(quarter_num, f'Q{quarter_num}')
+            
+            created_quarters.append({
+                'id': quarter_id,
+                'name': f"{month_name} {year} - MCES Education",
+                'meeting_date': meeting_date,
+                'slots_created': slots_created
+            })
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"✅ Complete reset: Cleared {registration_count} registrations, {quarter_count} quarters")
+        
+        return jsonify({
+            'message': '🎉 SUCCESS! Complete system reset!',
+            'cleared_registrations': registration_count,
+            'cleared_quarters': quarter_count,
+            'created_quarters': created_quarters,
+            'status': 'Fresh 2026 MCES quarters created',
+            'next_step': 'System ready for production use!'
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Error resetting system: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+@app.route('/api/admin/reset-quarter/<int:quarter_id>', methods=['GET'])
+def reset_specific_quarter(quarter_id):
+    """Reset a specific quarter - clear its registrations only"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Get quarter info
+        cursor.execute('''
+            SELECT q.year, q.quarter_number, q.meeting_date
+            FROM quarters q WHERE q.id = ?
+        ''', (quarter_id,))
+        
+        quarter_info = cursor.fetchone()
+        if not quarter_info:
+            return jsonify({'message': 'Quarter not found'}), 404
+        
+        # Count registrations for this quarter
+        cursor.execute('''
+            SELECT COUNT(*)
+            FROM speaker_registrations sr
+            JOIN lecture_slots ls ON sr.lecture_slot_id = ls.id
+            WHERE ls.quarter_id = ?
+        ''', (quarter_id,))
+        
+        registration_count = cursor.fetchone()[0]
+        
+        # Delete registrations for this quarter
+        cursor.execute('''
+            DELETE FROM speaker_registrations 
+            WHERE lecture_slot_id IN (
+                SELECT id FROM lecture_slots WHERE quarter_id = ?
+            )
+        ''', (quarter_id,))
+        
+        # Mark all slots for this quarter as available
+        cursor.execute('''
+            UPDATE lecture_slots SET is_available = 1 WHERE quarter_id = ?
+        ''', (quarter_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        # Map quarter number to month name
+        month_names = {1: 'February', 2: 'May', 3: 'August', 4: 'November'}
+        month_name = month_names.get(quarter_info[1], f'Q{quarter_info[1]}')
+        quarter_name = f"{month_name} {quarter_info[0]} - MCES Education"
+        
+        print(f"✅ Quarter reset: {quarter_name} - cleared {registration_count} registrations")
+        
+        return jsonify({
+            'message': f'🎉 SUCCESS! {quarter_name} reset!',
+            'quarter': quarter_name,
+            'cleared_registrations': registration_count,
+            'status': 'All time slots for this quarter are now available'
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Error resetting quarter: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
 # QUARTER CREATION ENDPOINTS
 
 @app.route('/api/quarters/create-2026', methods=['GET'])
@@ -408,6 +591,16 @@ def database_debug():
             debug_info['lecture_slots'] = {
                 'count': len(lecture_slots_data),
                 'data': lecture_slots_data
+            }
+        
+        # Get registrations info
+        if 'speaker_registrations' in tables:
+            cursor.execute('SELECT * FROM speaker_registrations')
+            registrations_data = cursor.fetchall()
+            
+            debug_info['speaker_registrations'] = {
+                'count': len(registrations_data),
+                'data': registrations_data
             }
         
         conn.close()
