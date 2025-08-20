@@ -1,7 +1,7 @@
 import os
 import sqlite3
 from datetime import datetime
-from flask import Flask, send_from_directory, jsonify
+from flask import Flask, send_from_directory, jsonify, request
 from flask_cors import CORS
 
 app = Flask(__name__, static_folder='static')
@@ -53,7 +53,6 @@ def create_sample_quarter():
             }), 200
         
         # Create new quarter using the correct schema
-        # quarters table: id, year, quarter_number, meeting_date, created_at, is_active
         cursor.execute('''
             INSERT INTO quarters (year, quarter_number, meeting_date, is_active)
             VALUES (?, ?, ?, ?)
@@ -89,7 +88,6 @@ def create_sample_quarter():
             time_slots = cursor.fetchall()
         
         # Create lecture slots for this quarter
-        # lecture_slots table: id, quarter_id, time_slot_id, is_available, created_at
         slots_created = []
         for time_slot in time_slots:
             cursor.execute('''
@@ -132,6 +130,47 @@ def create_sample_quarter():
     except Exception as e:
         return jsonify({
             'message': f'Error creating quarter: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+@app.route('/api/quarters', methods=['GET'])
+def get_all_quarters():
+    """Get all quarters - this is what the frontend calls"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT q.id, q.year, q.quarter_number, q.meeting_date, q.is_active,
+                   COUNT(ls.id) as total_slots,
+                   SUM(CASE WHEN ls.is_available = 1 THEN 1 ELSE 0 END) as available_slots
+            FROM quarters q
+            LEFT JOIN lecture_slots ls ON q.id = ls.quarter_id
+            GROUP BY q.id, q.year, q.quarter_number, q.meeting_date, q.is_active
+            ORDER BY q.year DESC, q.quarter_number DESC
+        ''')
+        
+        quarters = cursor.fetchall()
+        
+        quarter_list = []
+        for q in quarters:
+            quarter_list.append({
+                'id': q[0],
+                'year': q[1],
+                'quarter_number': q[2],
+                'meeting_date': q[3],
+                'is_active': bool(q[4]),
+                'name': f"Q{q[2]} {q[1]} - HEMS Education",
+                'total_slots': q[5] or 0,
+                'available_slots': q[6] or 0
+            })
+        
+        conn.close()
+        return jsonify(quarter_list), 200
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Error getting quarters: {str(e)}',
             'error_type': type(e).__name__
         }), 500
 
@@ -214,6 +253,62 @@ def get_quarter_slots(quarter_id):
             'error_type': type(e).__name__
         }), 500
 
+@app.route('/api/registrations', methods=['POST'])
+def create_registration():
+    """Handle speaker registration"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'message': 'No data provided'}), 400
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check if the slot is still available
+        cursor.execute('''
+            SELECT is_available FROM lecture_slots WHERE id = ?
+        ''', (data.get('lecture_slot_id'),))
+        
+        slot = cursor.fetchone()
+        if not slot or not slot[0]:
+            conn.close()
+            return jsonify({'message': 'Selected time slot is no longer available'}), 400
+        
+        # Create the registration
+        cursor.execute('''
+            INSERT INTO speaker_registrations 
+            (lecture_slot_id, speaker_name, speaker_email, speaker_phone, specialty, topic_title, topic_description, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            data.get('lecture_slot_id'),
+            data.get('speaker_name'),
+            data.get('speaker_email'),
+            data.get('speaker_phone'),
+            data.get('specialty'),
+            data.get('topic_title'),
+            data.get('topic_description'),
+            'confirmed'
+        ))
+        
+        # Mark the slot as unavailable
+        cursor.execute('''
+            UPDATE lecture_slots SET is_available = 0 WHERE id = ?
+        ''', (data.get('lecture_slot_id'),))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'message': 'Registration successful!',
+            'status': 'confirmed'
+        }), 201
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Error creating registration: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
 @app.route('/api/test')
 def api_test():
     return {
@@ -282,3 +377,4 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"🚀 Starting HEMS Scheduler on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
