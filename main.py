@@ -209,6 +209,217 @@ def get_quarters_data():
         print(f"Error getting quarters: {e}")
         return []
 
+# QUARTER CREATION ENDPOINTS
+
+@app.route('/api/quarters/create-2026', methods=['GET'])
+def create_2026_quarters():
+    """Create the 2026 MCES quarters"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check if 2026 quarters already exist
+        cursor.execute('SELECT COUNT(*) FROM quarters WHERE year = 2026')
+        existing_count = cursor.fetchone()[0]
+        
+        if existing_count > 0:
+            # Get existing quarters
+            quarters = get_quarters_data()
+            return jsonify({
+                'message': '✅ 2026 MCES quarters already exist!',
+                'quarters': quarters,
+                'count': len(quarters),
+                'status': 'already_exists'
+            }), 200
+        
+        # Create 2026 quarters
+        quarters_data = [
+            (2026, 1, '2026-02-15'),  # February
+            (2026, 2, '2026-05-15'),  # May
+            (2026, 3, '2026-08-15'),  # August
+            (2026, 4, '2026-11-15')   # November
+        ]
+        
+        created_quarters = []
+        
+        for year, quarter_num, meeting_date in quarters_data:
+            # Insert quarter
+            cursor.execute('''
+                INSERT INTO quarters (year, quarter_number, meeting_date, is_active)
+                VALUES (?, ?, ?, 1)
+            ''', (year, quarter_num, meeting_date))
+            
+            quarter_id = cursor.lastrowid
+            
+            # Get time slots
+            cursor.execute('SELECT id FROM time_slots ORDER BY start_time')
+            time_slots = cursor.fetchall()
+            
+            # Create lecture slots for this quarter
+            slots_created = 0
+            for time_slot in time_slots:
+                cursor.execute('''
+                    INSERT INTO lecture_slots (quarter_id, time_slot_id, is_available)
+                    VALUES (?, ?, 1)
+                ''', (quarter_id, time_slot[0]))
+                slots_created += 1
+            
+            # Map quarter number to month name
+            month_names = {1: 'February', 2: 'May', 3: 'August', 4: 'November'}
+            month_name = month_names.get(quarter_num, f'Q{quarter_num}')
+            
+            created_quarters.append({
+                'id': quarter_id,
+                'name': f"{month_name} {year} - MCES Education",
+                'meeting_date': meeting_date,
+                'slots_created': slots_created
+            })
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'message': '🎉 SUCCESS! 2026 MCES quarters created!',
+            'quarters': created_quarters,
+            'count': len(created_quarters),
+            'schedule': 'February, May, August, November 2026'
+        }), 201
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Error creating 2026 quarters: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+@app.route('/api/quarters/force-create', methods=['GET'])
+def force_create_quarters():
+    """Force create quarters even if they exist"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Delete existing 2026 quarters
+        cursor.execute('DELETE FROM quarters WHERE year = 2026')
+        
+        # Create 2026 quarters
+        quarters_data = [
+            (2026, 1, '2026-02-15'),  # February
+            (2026, 2, '2026-05-15'),  # May
+            (2026, 3, '2026-08-15'),  # August
+            (2026, 4, '2026-11-15')   # November
+        ]
+        
+        created_quarters = []
+        
+        for year, quarter_num, meeting_date in quarters_data:
+            # Insert quarter
+            cursor.execute('''
+                INSERT INTO quarters (year, quarter_number, meeting_date, is_active)
+                VALUES (?, ?, ?, 1)
+            ''', (year, quarter_num, meeting_date))
+            
+            quarter_id = cursor.lastrowid
+            
+            # Get time slots
+            cursor.execute('SELECT id FROM time_slots ORDER BY start_time')
+            time_slots = cursor.fetchall()
+            
+            # Create lecture slots for this quarter
+            slots_created = 0
+            for time_slot in time_slots:
+                cursor.execute('''
+                    INSERT INTO lecture_slots (quarter_id, time_slot_id, is_available)
+                    VALUES (?, ?, 1)
+                ''', (quarter_id, time_slot[0]))
+                slots_created += 1
+            
+            # Map quarter number to month name
+            month_names = {1: 'February', 2: 'May', 3: 'August', 4: 'November'}
+            month_name = month_names.get(quarter_num, f'Q{quarter_num}')
+            
+            created_quarters.append({
+                'id': quarter_id,
+                'name': f"{month_name} {year} - MCES Education",
+                'meeting_date': meeting_date,
+                'slots_created': slots_created
+            })
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'message': '🎉 SUCCESS! 2026 MCES quarters force-created!',
+            'quarters': created_quarters,
+            'count': len(created_quarters),
+            'schedule': 'February, May, August, November 2026'
+        }), 201
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Error force-creating quarters: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+@app.route('/api/database/debug', methods=['GET'])
+def database_debug():
+    """Debug database contents"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Get table info
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+        
+        debug_info = {
+            'database_exists': os.path.exists(DB_PATH),
+            'database_path': DB_PATH,
+            'tables': tables
+        }
+        
+        # Get quarters info
+        if 'quarters' in tables:
+            cursor.execute('SELECT * FROM quarters')
+            quarters_data = cursor.fetchall()
+            cursor.execute('PRAGMA table_info(quarters)')
+            quarters_columns = [col[1] for col in cursor.fetchall()]
+            
+            debug_info['quarters'] = {
+                'columns': quarters_columns,
+                'count': len(quarters_data),
+                'data': quarters_data
+            }
+        
+        # Get time slots info
+        if 'time_slots' in tables:
+            cursor.execute('SELECT * FROM time_slots')
+            time_slots_data = cursor.fetchall()
+            
+            debug_info['time_slots'] = {
+                'count': len(time_slots_data),
+                'data': time_slots_data
+            }
+        
+        # Get lecture slots info
+        if 'lecture_slots' in tables:
+            cursor.execute('SELECT * FROM lecture_slots')
+            lecture_slots_data = cursor.fetchall()
+            
+            debug_info['lecture_slots'] = {
+                'count': len(lecture_slots_data),
+                'data': lecture_slots_data
+            }
+        
+        conn.close()
+        
+        return jsonify(debug_info), 200
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Database debug error: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
 # ADMIN ENDPOINTS
 
 @app.route('/api/admin/login', methods=['POST'])
