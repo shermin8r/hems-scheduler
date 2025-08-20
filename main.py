@@ -1,5 +1,5 @@
 import os
-import sys
+import sqlite3
 from datetime import datetime
 from flask import Flask, send_from_directory, jsonify
 from flask_cors import CORS
@@ -10,201 +10,272 @@ app.config['SECRET_KEY'] = 'asdf#FGSgvasgf$5$WGT'
 # Enable CORS for all routes
 CORS(app, origins="*")
 
-# Database configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(os.path.dirname(__file__), 'database', 'app.db')}"
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# Database path
+DB_PATH = os.path.join(os.path.dirname(__file__), 'database', 'app.db')
 
 # Create database directory if it doesn't exist
-os.makedirs(os.path.join(os.path.dirname(__file__), 'database'), exist_ok=True)
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
-# Initialize database and models
-try:
-    from models.user import db
-    db.init_app(app)
-    
-    with app.app_context():
-        db.create_all()
-        print("✅ Database initialized successfully")
-        
-        # Import models after database is initialized
-        from models.quarter import Quarter
-        from models.time_slot import TimeSlot
-        from models.lecture_slot import LectureSlot
-        from models.speaker_registration import SpeakerRegistration
-        from models.admin_user import AdminUser
-        
-        # Initialize default data
-        TimeSlot.create_default_slots()
-        AdminUser.create_default_admin()
-        print("✅ Default data created")
-        
-except Exception as e:
-    print(f"❌ Error during initialization: {e}")
-
-# Import and register blueprints
-try:
-    from routes.user import user_bp
-    from routes.quarters import quarters_bp
-    from routes.registrations import registrations_bp
-    from routes.admin import admin_bp
-    
-    app.register_blueprint(user_bp, url_prefix='/api')
-    app.register_blueprint(quarters_bp, url_prefix='/api')
-    app.register_blueprint(registrations_bp, url_prefix='/api')
-    app.register_blueprint(admin_bp, url_prefix='/api')
-    print("✅ Blueprints registered successfully")
-    
-except Exception as e:
-    print(f"❌ Error registering blueprints: {e}")
-
-# Direct quarter creation route (bypasses blueprint issues)
-@app.route('/api/quarters/create-sample', methods=['GET', 'POST'])
-def create_sample_quarter_direct():
-    """Direct route to create sample quarter"""
+def init_database():
+    """Initialize database with required tables"""
     try:
-        # Import models directly in the route
-        sys.path.insert(0, os.path.dirname(__file__))
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
         
-        from models.quarter import Quarter
-        from models.time_slot import TimeSlot
-        from models.lecture_slot import LectureSlot
-        
-        # Check if we already have quarters
-        with app.app_context():
-            existing = Quarter.get_all()
-            if existing:
-                return jsonify({
-                    'message': '✅ Success! Quarters already exist',
-                    'quarters': [q.to_dict() for q in existing],
-                    'count': len(existing),
-                    'status': 'already_exists',
-                    'registration_url': 'https://hems.shermerautomation.com'
-                }), 200
-            
-            # Create Q1 2025 sample quarter
-            quarter = Quarter.create(
-                name='Q1 2025 - HEMS Education',
-                start_date='2025-01-01',
-                end_date='2025-03-31',
-                location='HEMS Training Center',
-                description='First quarter 2025 education meetings for HEMS clinicians'
+        # Create quarters table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS quarters (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL,
+                location TEXT,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
+        ''')
+        
+        # Create time_slots table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS time_slots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create lecture_slots table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS lecture_slots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quarter_id INTEGER NOT NULL,
+                time_slot_id INTEGER NOT NULL,
+                is_available BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (quarter_id) REFERENCES quarters (id),
+                FOREIGN KEY (time_slot_id) REFERENCES time_slots (id)
+            )
+        ''')
+        
+        # Create speaker_registrations table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS speaker_registrations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lecture_slot_id INTEGER NOT NULL,
+                speaker_name TEXT NOT NULL,
+                speaker_title TEXT,
+                email TEXT NOT NULL,
+                phone TEXT,
+                organization TEXT,
+                topic TEXT NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (lecture_slot_id) REFERENCES lecture_slots (id)
+            )
+        ''')
+        
+        # Insert default time slots if they don't exist
+        cursor.execute('SELECT COUNT(*) FROM time_slots')
+        if cursor.fetchone()[0] == 0:
+            time_slots = [
+                ('09:00', '10:00'),
+                ('10:00', '11:00'),
+                ('11:00', '12:00')
+            ]
+            cursor.executemany(
+                'INSERT INTO time_slots (start_time, end_time) VALUES (?, ?)',
+                time_slots
+            )
+        
+        conn.commit()
+        conn.close()
+        print("✅ Database initialized successfully")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Database initialization error: {e}")
+        return False
+
+# Initialize database on startup
+init_database()
+
+@app.route('/api/quarters/create-sample', methods=['GET', 'POST'])
+def create_sample_quarter():
+    """Create sample quarter using direct SQL"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check if quarters already exist
+        cursor.execute('SELECT COUNT(*) FROM quarters')
+        existing_count = cursor.fetchone()[0]
+        
+        if existing_count > 0:
+            # Get existing quarters
+            cursor.execute('SELECT id, name, start_date, end_date, location FROM quarters')
+            quarters = cursor.fetchall()
             
-            if quarter:
-                # Create lecture slots
-                time_slots = TimeSlot.get_all()
-                slots_created = []
-                
-                for time_slot in time_slots:
-                    lecture_slot = LectureSlot.create(quarter.id, time_slot.id)
-                    if lecture_slot:
-                        slots_created.append({
-                            'time': f"{time_slot.start_time} - {time_slot.end_time}",
-                            'available': True
-                        })
-                
-                return jsonify({
-                    'message': '🎉 SUCCESS! Sample quarter created successfully!',
-                    'quarter': quarter.to_dict(),
-                    'time_slots': slots_created,
-                    'slots_count': len(slots_created),
-                    'next_steps': [
-                        '✅ Speakers can now register at your website',
-                        '✅ Share the registration link with potential speakers',
-                        f'✅ {len(slots_created)} time slots are ready and available',
-                        '✅ System prevents double-booking automatically'
-                    ],
-                    'registration_url': 'https://hems.shermerautomation.com',
-                    'status': 'created'
-                }), 201
-            else:
-                return jsonify({
-                    'message': '❌ Failed to create sample quarter',
-                    'error': 'Database creation failed'
-                }), 500
+            quarter_list = []
+            for q in quarters:
+                quarter_list.append({
+                    'id': q[0],
+                    'name': q[1],
+                    'start_date': q[2],
+                    'end_date': q[3],
+                    'location': q[4]
+                })
             
-    except ImportError as e:
+            conn.close()
+            return jsonify({
+                'message': '✅ SUCCESS! Quarters already exist',
+                'quarters': quarter_list,
+                'count': existing_count,
+                'status': 'already_exists',
+                'registration_url': 'https://hems.shermerautomation.com'
+            }), 200
+        
+        # Create new quarter
+        cursor.execute('''
+            INSERT INTO quarters (name, start_date, end_date, location, description)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (
+            'Q1 2025 - HEMS Education',
+            '2025-01-01',
+            '2025-03-31',
+            'HEMS Training Center',
+            'First quarter 2025 education meetings for HEMS clinicians'
+        ))
+        
+        quarter_id = cursor.lastrowid
+        
+        # Get time slots
+        cursor.execute('SELECT id, start_time, end_time FROM time_slots')
+        time_slots = cursor.fetchall()
+        
+        # Create lecture slots for this quarter
+        slots_created = []
+        for time_slot in time_slots:
+            cursor.execute('''
+                INSERT INTO lecture_slots (quarter_id, time_slot_id, is_available)
+                VALUES (?, ?, 1)
+            ''', (quarter_id, time_slot[0]))
+            
+            slots_created.append({
+                'time': f"{time_slot[1]} - {time_slot[2]}",
+                'available': True
+            })
+        
+        conn.commit()
+        conn.close()
+        
         return jsonify({
-            'message': f'Import error: {str(e)}',
-            'error_type': 'ImportError',
-            'suggestion': 'Check if all model files exist in the models/ directory'
-        }), 500
+            'message': '🎉 SUCCESS! Sample quarter created successfully!',
+            'quarter': {
+                'id': quarter_id,
+                'name': 'Q1 2025 - HEMS Education',
+                'start_date': '2025-01-01',
+                'end_date': '2025-03-31',
+                'location': 'HEMS Training Center',
+                'description': 'First quarter 2025 education meetings for HEMS clinicians'
+            },
+            'time_slots': slots_created,
+            'slots_count': len(slots_created),
+            'next_steps': [
+                '✅ Speakers can now register at your website',
+                '✅ Share the registration link with potential speakers',
+                f'✅ {len(slots_created)} time slots are ready and available',
+                '✅ System prevents double-booking automatically'
+            ],
+            'registration_url': 'https://hems.shermerautomation.com',
+            'status': 'created'
+        }), 201
+        
     except Exception as e:
         return jsonify({
             'message': f'Error creating quarter: {str(e)}',
             'error_type': type(e).__name__
         }), 500
 
-# Simple quarter creation without complex models (fallback)
-@app.route('/api/quarters/create-simple', methods=['GET', 'POST'])
-def create_simple_quarter():
-    """Simplified quarter creation using direct SQL"""
+@app.route('/api/quarters/active', methods=['GET'])
+def get_active_quarters():
+    """Get active quarters"""
     try:
-        from models.user import db
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
         
-        with app.app_context():
-            # Check if quarters table exists and has data
-            result = db.engine.execute("SELECT COUNT(*) as count FROM quarters").fetchone()
-            if result and result[0] > 0:
-                return jsonify({
-                    'message': '✅ Quarters already exist in database',
-                    'count': result[0],
-                    'status': 'already_exists'
-                }), 200
-            
-            # Insert quarter directly
-            db.engine.execute("""
-                INSERT INTO quarters (name, start_date, end_date, location, description, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                'Q1 2025 - HEMS Education',
-                '2025-01-01',
-                '2025-03-31', 
-                'HEMS Training Center',
-                'First quarter 2025 education meetings',
-                datetime.now()
-            ))
-            
-            return jsonify({
-                'message': '🎉 SUCCESS! Simple quarter created!',
-                'quarter': {
-                    'name': 'Q1 2025 - HEMS Education',
-                    'start_date': '2025-01-01',
-                    'end_date': '2025-03-31',
-                    'location': 'HEMS Training Center'
-                },
-                'status': 'created',
-                'registration_url': 'https://hems.shermerautomation.com'
-            }), 201
-            
+        cursor.execute('''
+            SELECT q.id, q.name, q.start_date, q.end_date, q.location, q.description,
+                   COUNT(ls.id) as total_slots,
+                   SUM(CASE WHEN ls.is_available = 1 THEN 1 ELSE 0 END) as available_slots
+            FROM quarters q
+            LEFT JOIN lecture_slots ls ON q.id = ls.quarter_id
+            WHERE q.end_date >= date('now')
+            GROUP BY q.id, q.name, q.start_date, q.end_date, q.location, q.description
+        ''')
+        
+        quarters = cursor.fetchall()
+        
+        quarter_list = []
+        for q in quarters:
+            quarter_list.append({
+                'id': q[0],
+                'name': q[1],
+                'start_date': q[2],
+                'end_date': q[3],
+                'location': q[4],
+                'description': q[5],
+                'total_slots': q[6] or 0,
+                'available_slots': q[7] or 0
+            })
+        
+        conn.close()
+        
+        return jsonify(quarter_list), 200
+        
     except Exception as e:
         return jsonify({
-            'message': f'Simple creation error: {str(e)}',
+            'message': f'Error getting quarters: {str(e)}',
             'error_type': type(e).__name__
         }), 500
 
-# Test route
 @app.route('/api/test')
 def api_test():
     return {
         "message": "API is working!",
         "timestamp": datetime.now().isoformat(),
-        "status": "success"
+        "status": "success",
+        "database": "SQLite direct connection"
     }, 200
 
-# Check quarters route
 @app.route('/api/quarters/check', methods=['GET'])
 def check_quarters():
     """Check what quarters exist"""
     try:
-        from models.quarter import Quarter
-        with app.app_context():
-            quarters = Quarter.get_all()
-            return jsonify({
-                'message': f'Found {len(quarters)} quarter(s)',
-                'quarters': [q.to_dict() for q in quarters],
-                'count': len(quarters)
-            }), 200
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT id, name, start_date, end_date, location FROM quarters')
+        quarters = cursor.fetchall()
+        
+        quarter_list = []
+        for q in quarters:
+            quarter_list.append({
+                'id': q[0],
+                'name': q[1],
+                'start_date': q[2],
+                'end_date': q[3],
+                'location': q[4]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'message': f'Found {len(quarters)} quarter(s)',
+            'quarters': quarter_list,
+            'count': len(quarters)
+        }), 200
+        
     except Exception as e:
         return jsonify({
             'message': f'Error checking quarters: {str(e)}',
