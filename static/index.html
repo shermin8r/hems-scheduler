@@ -342,21 +342,9 @@
             }
         }
 
-        /* Hidden admin access - no visible indication */
-        .admin-secret-access {
-            position: fixed;
-            bottom: 10px;
-            right: 10px;
-            width: 20px;
-            height: 20px;
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            opacity: 0;
-        }
-
-        .admin-secret-access:hover {
-            opacity: 0.1;
+        /* Secret admin access - triple click on title */
+        .secret-admin-trigger {
+            cursor: default;
         }
     </style>
 </head>
@@ -364,7 +352,7 @@
     <div class="container">
         <!-- Main Header -->
         <div class="header">
-            <h1>MCES Quarterly Education Series Scheduler</h1>
+            <h1 class="secret-admin-trigger" onclick="handleTitleClick()">MCES Quarterly Education Series Scheduler</h1>
             <p>Register to present at upcoming MCES quarterly education meetings</p>
         </div>
 
@@ -530,15 +518,14 @@
                 </div>
             </div>
         </div>
-
-        <!-- Hidden admin access button (invisible) -->
-        <button class="admin-secret-access" onclick="showAdminInterface()" title="Admin Access"></button>
     </div>
 
     <script>
         let selectedQuarter = null;
         let selectedSlot = null;
         let adminToken = null;
+        let titleClickCount = 0;
+        let titleClickTimer = null;
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
@@ -551,6 +538,22 @@
                 verifyAdminSession();
             }
         });
+
+        // Secret admin access via triple-click on title
+        function handleTitleClick() {
+            titleClickCount++;
+            
+            if (titleClickTimer) {
+                clearTimeout(titleClickTimer);
+            }
+            
+            titleClickTimer = setTimeout(() => {
+                if (titleClickCount >= 3) {
+                    showAdminInterface();
+                }
+                titleClickCount = 0;
+            }, 500);
+        }
 
         // Show main content
         function showMainContent() {
@@ -567,7 +570,7 @@
             loadQuarters();
         }
 
-        // Show admin interface (hidden access)
+        // Show admin interface (secret access)
         function showAdminInterface() {
             document.getElementById('main-content').style.display = 'none';
             document.getElementById('registration-form').style.display = 'none';
@@ -641,20 +644,11 @@
                     return;
                 }
                 
-                // Helper function to format time
-                function formatTime(timeStr) {
-                    if (!timeStr) return '';
-                    const parts = timeStr.split(':');
-                    return `${parts[0]}:${parts[1]}`;
-                }
-                
                 slots.forEach(slot => {
                     const slotDiv = document.createElement('div');
                     slotDiv.className = `time-slot ${slot.is_available ? 'available' : 'unavailable'}`;
                     
-                    const startTime = formatTime(slot.start_time);
-                    const endTime = formatTime(slot.end_time);
-                    const timeDisplay = `${startTime} - ${endTime}`;
+                    const timeDisplay = slot.time_display;
                     
                     let slotName = slot.slot_name || '';
                     if (slotName.includes('(')) {
@@ -770,7 +764,7 @@
             const password = document.getElementById('admin-password').value;
             
             try {
-                const response = await fetch('/api/admin-secure-mces-2024/login', {
+                const response = await fetch('/api/admin-secure-mces/login', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -806,7 +800,7 @@
             if (!adminToken) return false;
             
             try {
-                const response = await fetch('/api/admin-secure-mces-2024/verify', {
+                const response = await fetch('/api/admin-secure-mces/verify', {
                     headers: {
                         'Authorization': `Bearer ${adminToken}`
                     }
@@ -837,7 +831,7 @@
             
             try {
                 // Load registrations
-                const response = await fetch('/api/admin-secure-mces-2024/registrations', {
+                const response = await fetch('/api/admin-secure-mces/registrations', {
                     headers: {
                         'Authorization': `Bearer ${adminToken}`
                     }
@@ -915,7 +909,7 @@
         async function adminLogout() {
             try {
                 if (adminToken) {
-                    await fetch('/api/admin-secure-mces-2024/logout', {
+                    await fetch('/api/admin-secure-mces/logout', {
                         method: 'POST',
                         headers: {
                             'Authorization': `Bearer ${adminToken}`
@@ -938,7 +932,7 @@
             }
             
             try {
-                const response = await fetch('/api/admin-secure-mces-2024/reset-registrations', {
+                const response = await fetch('/api/admin-secure-mces/reset-registrations', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${adminToken}`
@@ -963,7 +957,7 @@
         // Export CSV
         async function exportCSV() {
             try {
-                const response = await fetch('/api/admin-secure-mces-2024/export/csv', {
+                const response = await fetch('/api/admin-secure-mces/export/csv', {
                     headers: {
                         'Authorization': `Bearer ${adminToken}`
                     }
