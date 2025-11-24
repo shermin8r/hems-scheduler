@@ -2,11 +2,9 @@ import os
 import sqlite3
 import hashlib
 import secrets
-import jwt
 from datetime import datetime, timedelta
 from flask import Flask, send_from_directory, jsonify, request, make_response
 from flask_cors import CORS
-from functools import wraps
 
 app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = 'mces-secure-scheduler-2024-' + secrets.token_hex(16)
@@ -17,92 +15,35 @@ CORS(app, origins="*")
 # Database path
 DB_PATH = os.path.join(os.path.dirname(__file__), 'database', 'app.db')
 
-# Security configuration
-JWT_SECRET = app.config['SECRET_KEY']
-JWT_EXPIRY_HOURS = 8  # Admin session expires after 8 hours
-MAX_LOGIN_ATTEMPTS = 5
-LOGIN_ATTEMPT_WINDOW = 15  # minutes
+# Simple session storage (in production, use Redis or database)
+admin_sessions = {}
 
 def hash_password(password):
-    """Hash password with salt"""
+    """Simple password hashing"""
     salt = secrets.token_hex(16)
-    password_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
-    return salt + password_hash.hex()
+    password_hash = hashlib.sha256((password + salt).encode()).hexdigest()
+    return salt + password_hash
 
 def verify_password(password, stored_hash):
     """Verify password against stored hash"""
     try:
-        salt = stored_hash[:32]  # First 32 chars are salt
+        salt = stored_hash[:32]
         stored_password_hash = stored_hash[32:]
-        password_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
-        return password_hash.hex() == stored_password_hash
+        password_hash = hashlib.sha256((password + salt).encode()).hexdigest()
+        return password_hash == stored_password_hash
     except:
         return False
 
-def generate_jwt_token(user_id, username):
-    """Generate JWT token for admin session"""
-    payload = {
-        'user_id': user_id,
-        'username': username,
-        'exp': datetime.utcnow() + timedelta(hours=JWT_EXPIRY_HOURS),
-        'iat': datetime.utcnow()
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
+def generate_session_token():
+    """Generate simple session token"""
+    return secrets.token_hex(32)
 
-def verify_jwt_token(token):
-    """Verify JWT token and return user info"""
+def log_admin_activity(username, action, success=True):
+    """Log admin activities"""
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
-        return payload
-    except jwt.ExpiredSignatureError:
-        return None
-    except jwt.InvalidTokenError:
-        return None
-
-def log_admin_activity(username, action, ip_address=None, success=True):
-    """Log admin activities for security audit"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            INSERT INTO admin_activity_log (username, action, ip_address, success, timestamp)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (username, action, ip_address, success, datetime.now().isoformat()))
-        
-        conn.commit()
-        conn.close()
-        
-        print(f"🔒 ADMIN ACTIVITY: {username} - {action} - {'SUCCESS' if success else 'FAILED'}")
-        
+        print(f"🔒 ADMIN ACTIVITY: {username} - {action} - {'SUCCESS' if success else 'FAILED'} - {datetime.now()}")
     except Exception as e:
         print(f"Error logging admin activity: {e}")
-
-def require_admin_auth(f):
-    """Decorator to require admin authentication"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if not token:
-            # Try to get token from cookie
-            token = request.cookies.get('admin_token')
-        
-        if not token:
-            return jsonify({'error': 'No authentication token provided'}), 401
-        
-        # Remove 'Bearer ' prefix if present
-        if token.startswith('Bearer '):
-            token = token[7:]
-        
-        user_info = verify_jwt_token(token)
-        if not user_info:
-            return jsonify({'error': 'Invalid or expired token'}), 401
-        
-        # Add user info to request context
-        request.admin_user = user_info
-        return f(*args, **kwargs)
-    
-    return decorated_function
 
 def ensure_database_and_data():
     """Ensure database exists with proper structure and secure admin user"""
@@ -165,39 +106,14 @@ def ensure_database_and_data():
             )
         ''')
         
-        # Create secure admin_users table
+        # Create simple admin_users table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS admin_users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
-                email TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_login TIMESTAMP,
                 is_active BOOLEAN DEFAULT 1
-            )
-        ''')
-        
-        # Create admin activity log table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS admin_activity_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
-                action TEXT NOT NULL,
-                ip_address TEXT,
-                success BOOLEAN NOT NULL,
-                timestamp TEXT NOT NULL
-            )
-        ''')
-        
-        # Create login attempts table for rate limiting
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS login_attempts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ip_address TEXT NOT NULL,
-                username TEXT,
-                attempt_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                success BOOLEAN NOT NULL
             )
         ''')
         
@@ -206,17 +122,16 @@ def ensure_database_and_data():
         admin_exists = cursor.fetchone()[0] > 0
         
         if not admin_exists:
-            # Create secure admin user with strong password
-            secure_password = 'MCES2024!Secure#Admin'  # You'll change this after first login
+            # Create secure admin user
+            secure_password = 'MCES2024!Secure'
             password_hash = hash_password(secure_password)
             
             cursor.execute('''
-                INSERT INTO admin_users (username, password_hash, email, is_active)
-                VALUES (?, ?, ?, ?)
-            ''', ('mces_admin', password_hash, 'admin@mces.edu', 1))
+                INSERT INTO admin_users (username, password_hash, is_active)
+                VALUES (?, ?, ?)
+            ''', ('mces_admin', password_hash, 1))
             
-            print("✅ Secure admin user created: mces_admin / MCES2024!Secure#Admin")
-            print("🔒 IMPORTANT: Change this password after first login!")
+            print("✅ Secure admin user created: mces_admin / MCES2024!Secure")
         
         # Ensure we have the standard time slots with clean formatting
         cursor.execute('SELECT COUNT(*) FROM time_slots')
@@ -312,51 +227,35 @@ def send_notification_email(registration_data, quarter_info, slot_info):
     except Exception as e:
         print(f"Error sending notification: {e}")
 
-def check_login_attempts(ip_address):
-    """Check if IP has exceeded login attempts"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+def require_admin_auth(f):
+    """Simple decorator to require admin authentication"""
+    def decorated_function(*args, **kwargs):
+        session_token = request.headers.get('Authorization')
+        if not session_token:
+            session_token = request.cookies.get('admin_session')
         
-        # Check attempts in the last window
-        cutoff_time = datetime.now() - timedelta(minutes=LOGIN_ATTEMPT_WINDOW)
+        if not session_token:
+            return jsonify({'error': 'No authentication provided'}), 401
         
-        cursor.execute('''
-            SELECT COUNT(*) FROM login_attempts 
-            WHERE ip_address = ? AND attempt_time > ? AND success = 0
-        ''', (ip_address, cutoff_time.isoformat()))
+        # Remove 'Bearer ' prefix if present
+        if session_token.startswith('Bearer '):
+            session_token = session_token[7:]
         
-        failed_attempts = cursor.fetchone()[0]
-        conn.close()
+        if session_token not in admin_sessions:
+            return jsonify({'error': 'Invalid or expired session'}), 401
         
-        return failed_attempts < MAX_LOGIN_ATTEMPTS
+        session_data = admin_sessions[session_token]
+        if datetime.now() > session_data['expires']:
+            del admin_sessions[session_token]
+            return jsonify({'error': 'Session expired'}), 401
         
-    except Exception as e:
-        print(f"Error checking login attempts: {e}")
-        return True  # Allow login if check fails
-
-def log_login_attempt(ip_address, username, success):
-    """Log login attempt for rate limiting"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+        # Extend session
+        session_data['expires'] = datetime.now() + timedelta(hours=8)
         
-        cursor.execute('''
-            INSERT INTO login_attempts (ip_address, username, success)
-            VALUES (?, ?, ?)
-        ''', (ip_address, username, success))
-        
-        conn.commit()
-        conn.close()
-        
-    except Exception as e:
-        print(f"Error logging login attempt: {e}")
-
-# Logging middleware
-@app.before_request
-def log_request_info():
-    if request.path.startswith('/api/'):
-        print(f"API Request: {request.method} {request.path}")
+        return f(*args, **kwargs)
+    
+    decorated_function.__name__ = f.__name__
+    return decorated_function
 
 def get_quarters_data():
     """Common function to get quarters data with MCES branding"""
@@ -410,158 +309,117 @@ def get_quarters_data():
 
 # SECURE ADMIN ENDPOINTS
 
-@app.route('/api/admin-secure-mces-2024/login', methods=['POST'])
+@app.route('/api/admin-secure-mces/login', methods=['POST'])
 def secure_admin_login():
-    """Secure admin login with rate limiting and proper authentication"""
+    """Secure admin login"""
     try:
         data = request.get_json()
-        ip_address = request.remote_addr
         
         if not data:
-            return jsonify({
-                'success': False,
-                'message': 'No login data provided'
-            }), 400
+            return jsonify({'success': False, 'message': 'No login data provided'}), 400
         
         username = data.get('username', '').strip()
         password = data.get('password', '')
         
-        # Check rate limiting
-        if not check_login_attempts(ip_address):
-            log_login_attempt(ip_address, username, False)
-            log_admin_activity(username or 'unknown', 'LOGIN_BLOCKED_RATE_LIMIT', ip_address, False)
-            return jsonify({
-                'success': False,
-                'message': f'Too many failed login attempts. Please try again in {LOGIN_ATTEMPT_WINDOW} minutes.'
-            }), 429
-        
         if not username or not password:
-            log_login_attempt(ip_address, username, False)
-            return jsonify({
-                'success': False,
-                'message': 'Username and password are required'
-            }), 400
+            return jsonify({'success': False, 'message': 'Username and password are required'}), 400
         
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT id, username, password_hash, email, is_active 
+            SELECT id, username, password_hash, is_active 
             FROM admin_users 
             WHERE username = ? AND is_active = 1
         ''', (username,))
         user = cursor.fetchone()
         
         if user and verify_password(password, user[2]):
-            # Update last login
-            cursor.execute('''
-                UPDATE admin_users SET last_login = ? WHERE id = ?
-            ''', (datetime.now().isoformat(), user[0]))
-            conn.commit()
+            # Generate session token
+            session_token = generate_session_token()
             
-            # Generate JWT token
-            token = generate_jwt_token(user[0], user[1])
+            # Store session
+            admin_sessions[session_token] = {
+                'user_id': user[0],
+                'username': user[1],
+                'expires': datetime.now() + timedelta(hours=8)
+            }
             
-            # Log successful login
-            log_login_attempt(ip_address, username, True)
-            log_admin_activity(username, 'LOGIN_SUCCESS', ip_address, True)
+            log_admin_activity(username, 'LOGIN_SUCCESS', True)
             
             # Create response with secure cookie
             response = make_response(jsonify({
                 'success': True,
                 'message': 'Login successful',
-                'token': token,
-                'user': {
-                    'id': user[0],
-                    'username': user[1],
-                    'email': user[3]
-                }
+                'token': session_token,
+                'user': {'id': user[0], 'username': user[1]}
             }))
             
-            # Set secure HTTP-only cookie
-            response.set_cookie(
-                'admin_token',
-                token,
-                max_age=JWT_EXPIRY_HOURS * 3600,
-                httponly=True,
-                secure=True,
-                samesite='Strict'
-            )
+            response.set_cookie('admin_session', session_token, max_age=8*3600, httponly=True)
             
             conn.close()
             return response, 200
         else:
-            # Log failed login
-            log_login_attempt(ip_address, username, False)
-            log_admin_activity(username, 'LOGIN_FAILED', ip_address, False)
-            
+            log_admin_activity(username, 'LOGIN_FAILED', False)
             conn.close()
-            return jsonify({
-                'success': False,
-                'message': 'Invalid username or password'
-            }), 401
+            return jsonify({'success': False, 'message': 'Invalid username or password'}), 401
             
     except Exception as e:
         print(f"Secure login error: {e}")
-        return jsonify({
-            'success': False,
-            'message': 'Login error occurred'
-        }), 500
+        return jsonify({'success': False, 'message': 'Login error occurred'}), 500
 
-@app.route('/api/admin-secure-mces-2024/logout', methods=['POST'])
+@app.route('/api/admin-secure-mces/logout', methods=['POST'])
 @require_admin_auth
 def secure_admin_logout():
     """Secure admin logout"""
     try:
-        username = request.admin_user.get('username', 'unknown')
-        ip_address = request.remote_addr
+        session_token = request.headers.get('Authorization') or request.cookies.get('admin_session')
+        if session_token and session_token.startswith('Bearer '):
+            session_token = session_token[7:]
         
-        log_admin_activity(username, 'LOGOUT', ip_address, True)
+        if session_token in admin_sessions:
+            username = admin_sessions[session_token]['username']
+            del admin_sessions[session_token]
+            log_admin_activity(username, 'LOGOUT', True)
         
-        response = make_response(jsonify({
-            'success': True,
-            'message': 'Logged out successfully'
-        }))
-        
-        # Clear the cookie
-        response.set_cookie('admin_token', '', expires=0)
+        response = make_response(jsonify({'success': True, 'message': 'Logged out successfully'}))
+        response.set_cookie('admin_session', '', expires=0)
         
         return response, 200
         
     except Exception as e:
         print(f"Logout error: {e}")
-        return jsonify({
-            'success': False,
-            'message': 'Logout error occurred'
-        }), 500
+        return jsonify({'success': False, 'message': 'Logout error occurred'}), 500
 
-@app.route('/api/admin-secure-mces-2024/verify', methods=['GET'])
+@app.route('/api/admin-secure-mces/verify', methods=['GET'])
 @require_admin_auth
 def verify_admin_session():
     """Verify admin session is still valid"""
     try:
-        return jsonify({
-            'success': True,
-            'user': {
-                'id': request.admin_user['user_id'],
-                'username': request.admin_user['username']
-            }
-        }), 200
+        session_token = request.headers.get('Authorization') or request.cookies.get('admin_session')
+        if session_token and session_token.startswith('Bearer '):
+            session_token = session_token[7:]
+        
+        if session_token in admin_sessions:
+            session_data = admin_sessions[session_token]
+            return jsonify({
+                'success': True,
+                'user': {
+                    'id': session_data['user_id'],
+                    'username': session_data['username']
+                }
+            }), 200
+        
+        return jsonify({'success': False, 'message': 'Session not found'}), 401
         
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': 'Session verification failed'
-        }), 401
+        return jsonify({'success': False, 'message': 'Session verification failed'}), 401
 
-@app.route('/api/admin-secure-mces-2024/registrations', methods=['GET'])
+@app.route('/api/admin-secure-mces/registrations', methods=['GET'])
 @require_admin_auth
 def get_all_registrations_secure():
     """Get all speaker registrations for secure admin view"""
     try:
-        username = request.admin_user.get('username', 'unknown')
-        log_admin_activity(username, 'VIEW_REGISTRATIONS', request.remote_addr, True)
-        
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
@@ -636,14 +494,11 @@ def get_all_registrations_secure():
             'error_type': type(e).__name__
         }), 500
 
-@app.route('/api/admin-secure-mces-2024/reset-registrations', methods=['POST'])
+@app.route('/api/admin-secure-mces/reset-registrations', methods=['POST'])
 @require_admin_auth
 def reset_registrations_secure():
     """Secure reset of all speaker registrations"""
     try:
-        username = request.admin_user.get('username', 'unknown')
-        log_admin_activity(username, 'RESET_REGISTRATIONS', request.remote_addr, True)
-        
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
@@ -660,14 +515,12 @@ def reset_registrations_secure():
         conn.commit()
         conn.close()
         
-        print(f"✅ Secure reset: Cleared {registration_count} registrations by {username}")
+        log_admin_activity('admin', f'RESET_REGISTRATIONS_{registration_count}', True)
         
         return jsonify({
             'message': f'🎉 SUCCESS! System reset complete!',
             'cleared_registrations': registration_count,
-            'status': 'All time slots are now available',
-            'quarters_preserved': 'Your 2026 quarters remain intact',
-            'reset_by': username
+            'status': 'All time slots are now available'
         }), 200
         
     except Exception as e:
@@ -676,14 +529,11 @@ def reset_registrations_secure():
             'error_type': type(e).__name__
         }), 500
 
-@app.route('/api/admin-secure-mces-2024/export/csv', methods=['GET'])
+@app.route('/api/admin-secure-mces/export/csv', methods=['GET'])
 @require_admin_auth
 def export_registrations_csv_secure():
     """Secure export of all registrations as CSV data"""
     try:
-        username = request.admin_user.get('username', 'unknown')
-        log_admin_activity(username, 'EXPORT_CSV', request.remote_addr, True)
-        
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
@@ -746,6 +596,8 @@ def export_registrations_csv_secure():
             csv_content += ','.join(row) + '\n'
         
         conn.close()
+        
+        log_admin_activity('admin', 'EXPORT_CSV', True)
         
         return jsonify({
             'csv_data': csv_content,
@@ -949,5 +801,5 @@ def health_check():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"🚀 Starting MCES Quarterly Education Series Scheduler on port {port}")
-    print(f"🔒 Secure admin access: /admin-secure-mces-2024")
+    print(f"🔒 Secure admin access available")
     app.run(host='0.0.0.0', port=port, debug=False)
