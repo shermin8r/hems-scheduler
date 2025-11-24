@@ -1,11 +1,15 @@
 import os
 import sqlite3
-from datetime import datetime
-from flask import Flask, send_from_directory, jsonify, request
+import hashlib
+import secrets
+import jwt
+from datetime import datetime, timedelta
+from flask import Flask, send_from_directory, jsonify, request, make_response
 from flask_cors import CORS
+from functools import wraps
 
 app = Flask(__name__, static_folder='static')
-app.config['SECRET_KEY'] = 'asdf#FGSgvasgf$5$WGT'
+app.config['SECRET_KEY'] = 'mces-secure-scheduler-2024-' + secrets.token_hex(16)
 
 # Enable CORS for all routes
 CORS(app, origins="*")
@@ -13,8 +17,95 @@ CORS(app, origins="*")
 # Database path
 DB_PATH = os.path.join(os.path.dirname(__file__), 'database', 'app.db')
 
+# Security configuration
+JWT_SECRET = app.config['SECRET_KEY']
+JWT_EXPIRY_HOURS = 8  # Admin session expires after 8 hours
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_ATTEMPT_WINDOW = 15  # minutes
+
+def hash_password(password):
+    """Hash password with salt"""
+    salt = secrets.token_hex(16)
+    password_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+    return salt + password_hash.hex()
+
+def verify_password(password, stored_hash):
+    """Verify password against stored hash"""
+    try:
+        salt = stored_hash[:32]  # First 32 chars are salt
+        stored_password_hash = stored_hash[32:]
+        password_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+        return password_hash.hex() == stored_password_hash
+    except:
+        return False
+
+def generate_jwt_token(user_id, username):
+    """Generate JWT token for admin session"""
+    payload = {
+        'user_id': user_id,
+        'username': username,
+        'exp': datetime.utcnow() + timedelta(hours=JWT_EXPIRY_HOURS),
+        'iat': datetime.utcnow()
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
+
+def verify_jwt_token(token):
+    """Verify JWT token and return user info"""
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+        return payload
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+def log_admin_activity(username, action, ip_address=None, success=True):
+    """Log admin activities for security audit"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO admin_activity_log (username, action, ip_address, success, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (username, action, ip_address, success, datetime.now().isoformat()))
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"🔒 ADMIN ACTIVITY: {username} - {action} - {'SUCCESS' if success else 'FAILED'}")
+        
+    except Exception as e:
+        print(f"Error logging admin activity: {e}")
+
+def require_admin_auth(f):
+    """Decorator to require admin authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            # Try to get token from cookie
+            token = request.cookies.get('admin_token')
+        
+        if not token:
+            return jsonify({'error': 'No authentication token provided'}), 401
+        
+        # Remove 'Bearer ' prefix if present
+        if token.startswith('Bearer '):
+            token = token[7:]
+        
+        user_info = verify_jwt_token(token)
+        if not user_info:
+            return jsonify({'error': 'Invalid or expired token'}), 401
+        
+        # Add user info to request context
+        request.admin_user = user_info
+        return f(*args, **kwargs)
+    
+    return decorated_function
+
 def ensure_database_and_data():
-    """Ensure database exists with proper structure and admin user"""
+    """Ensure database exists with proper structure and secure admin user"""
     try:
         # Create database directory if it doesn't exist
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -74,25 +165,58 @@ def ensure_database_and_data():
             )
         ''')
         
-        # Create admin_users table if it doesn't exist
+        # Create secure admin_users table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS admin_users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 email TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP,
+                is_active BOOLEAN DEFAULT 1
             )
         ''')
         
-        # Ensure admin user exists with correct credentials
-        cursor.execute('DELETE FROM admin_users WHERE username = ?', ('admin',))
+        # Create admin activity log table
         cursor.execute('''
-            INSERT INTO admin_users (username, password_hash, email)
-            VALUES (?, ?, ?)
-        ''', ('admin', 'admin123', 'admin@mces.edu'))
+            CREATE TABLE IF NOT EXISTS admin_activity_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                action TEXT NOT NULL,
+                ip_address TEXT,
+                success BOOLEAN NOT NULL,
+                timestamp TEXT NOT NULL
+            )
+        ''')
         
-        print("✅ Admin user created: admin / admin123")
+        # Create login attempts table for rate limiting
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS login_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ip_address TEXT NOT NULL,
+                username TEXT,
+                attempt_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                success BOOLEAN NOT NULL
+            )
+        ''')
+        
+        # Check if secure admin user exists
+        cursor.execute('SELECT COUNT(*) FROM admin_users WHERE username = ?', ('mces_admin',))
+        admin_exists = cursor.fetchone()[0] > 0
+        
+        if not admin_exists:
+            # Create secure admin user with strong password
+            secure_password = 'MCES2024!Secure#Admin'  # You'll change this after first login
+            password_hash = hash_password(secure_password)
+            
+            cursor.execute('''
+                INSERT INTO admin_users (username, password_hash, email, is_active)
+                VALUES (?, ?, ?, ?)
+            ''', ('mces_admin', password_hash, 'admin@mces.edu', 1))
+            
+            print("✅ Secure admin user created: mces_admin / MCES2024!Secure#Admin")
+            print("🔒 IMPORTANT: Change this password after first login!")
         
         # Ensure we have the standard time slots with clean formatting
         cursor.execute('SELECT COUNT(*) FROM time_slots')
@@ -113,10 +237,45 @@ def ensure_database_and_data():
             
             print("✅ Time slots created")
         
+        # Auto-create 2026 quarters if they don't exist
+        cursor.execute('SELECT COUNT(*) FROM quarters WHERE year = 2026')
+        quarters_exist = cursor.fetchone()[0] > 0
+        
+        if not quarters_exist:
+            # Create 2026 quarters automatically
+            quarters_data = [
+                (2026, 1, '2026-02-15'),  # February
+                (2026, 2, '2026-05-15'),  # May
+                (2026, 3, '2026-08-15'),  # August
+                (2026, 4, '2026-11-15')   # November
+            ]
+            
+            for year, quarter_num, meeting_date in quarters_data:
+                # Insert quarter
+                cursor.execute('''
+                    INSERT INTO quarters (year, quarter_number, meeting_date, is_active)
+                    VALUES (?, ?, ?, 1)
+                ''', (year, quarter_num, meeting_date))
+                
+                quarter_id = cursor.lastrowid
+                
+                # Get time slots
+                cursor.execute('SELECT id FROM time_slots ORDER BY start_time')
+                time_slots = cursor.fetchall()
+                
+                # Create lecture slots for this quarter
+                for time_slot in time_slots:
+                    cursor.execute('''
+                        INSERT INTO lecture_slots (quarter_id, time_slot_id, is_available)
+                        VALUES (?, ?, 1)
+                    ''', (quarter_id, time_slot[0]))
+            
+            print("✅ 2026 MCES quarters auto-created")
+        
         conn.commit()
         conn.close()
         
-        print("✅ Database initialized successfully")
+        print("✅ Secure database initialized successfully")
         return True
         
     except Exception as e:
@@ -152,6 +311,46 @@ def send_notification_email(registration_data, quarter_info, slot_info):
         
     except Exception as e:
         print(f"Error sending notification: {e}")
+
+def check_login_attempts(ip_address):
+    """Check if IP has exceeded login attempts"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check attempts in the last window
+        cutoff_time = datetime.now() - timedelta(minutes=LOGIN_ATTEMPT_WINDOW)
+        
+        cursor.execute('''
+            SELECT COUNT(*) FROM login_attempts 
+            WHERE ip_address = ? AND attempt_time > ? AND success = 0
+        ''', (ip_address, cutoff_time.isoformat()))
+        
+        failed_attempts = cursor.fetchone()[0]
+        conn.close()
+        
+        return failed_attempts < MAX_LOGIN_ATTEMPTS
+        
+    except Exception as e:
+        print(f"Error checking login attempts: {e}")
+        return True  # Allow login if check fails
+
+def log_login_attempt(ip_address, username, success):
+    """Log login attempt for rate limiting"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO login_attempts (ip_address, username, success)
+            VALUES (?, ?, ?)
+        ''', (ip_address, username, success))
+        
+        conn.commit()
+        conn.close()
+        
+    except Exception as e:
+        print(f"Error logging login attempt: {e}")
 
 # Logging middleware
 @app.before_request
@@ -209,418 +408,14 @@ def get_quarters_data():
         print(f"Error getting quarters: {e}")
         return []
 
-# RESET ENDPOINTS
+# SECURE ADMIN ENDPOINTS
 
-@app.route('/api/admin/reset-registrations', methods=['GET'])
-def reset_registrations():
-    """Clear all speaker registrations and make slots available again"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Count existing registrations
-        cursor.execute('SELECT COUNT(*) FROM speaker_registrations')
-        registration_count = cursor.fetchone()[0]
-        
-        # Delete all speaker registrations
-        cursor.execute('DELETE FROM speaker_registrations')
-        
-        # Mark all lecture slots as available
-        cursor.execute('UPDATE lecture_slots SET is_available = 1')
-        
-        conn.commit()
-        conn.close()
-        
-        print(f"✅ Reset: Cleared {registration_count} registrations")
-        
-        return jsonify({
-            'message': f'🎉 SUCCESS! System reset complete!',
-            'cleared_registrations': registration_count,
-            'status': 'All time slots are now available',
-            'quarters_preserved': 'Your 2026 quarters remain intact',
-            'next_step': 'Ready for real speaker registrations!'
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            'message': f'Error resetting registrations: {str(e)}',
-            'error_type': type(e).__name__
-        }), 500
-
-@app.route('/api/admin/reset-all', methods=['GET'])
-def reset_all():
-    """Complete system reset - clear everything and recreate 2026 quarters"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Count what we're deleting
-        cursor.execute('SELECT COUNT(*) FROM speaker_registrations')
-        registration_count = cursor.fetchone()[0]
-        
-        cursor.execute('SELECT COUNT(*) FROM quarters')
-        quarter_count = cursor.fetchone()[0]
-        
-        # Delete all data
-        cursor.execute('DELETE FROM speaker_registrations')
-        cursor.execute('DELETE FROM lecture_slots')
-        cursor.execute('DELETE FROM quarters')
-        
-        # Recreate 2026 quarters
-        quarters_data = [
-            (2026, 1, '2026-02-15'),  # February
-            (2026, 2, '2026-05-15'),  # May
-            (2026, 3, '2026-08-15'),  # August
-            (2026, 4, '2026-11-15')   # November
-        ]
-        
-        created_quarters = []
-        
-        for year, quarter_num, meeting_date in quarters_data:
-            # Insert quarter
-            cursor.execute('''
-                INSERT INTO quarters (year, quarter_number, meeting_date, is_active)
-                VALUES (?, ?, ?, 1)
-            ''', (year, quarter_num, meeting_date))
-            
-            quarter_id = cursor.lastrowid
-            
-            # Get time slots
-            cursor.execute('SELECT id FROM time_slots ORDER BY start_time')
-            time_slots = cursor.fetchall()
-            
-            # Create lecture slots for this quarter
-            slots_created = 0
-            for time_slot in time_slots:
-                cursor.execute('''
-                    INSERT INTO lecture_slots (quarter_id, time_slot_id, is_available)
-                    VALUES (?, ?, 1)
-                ''', (quarter_id, time_slot[0]))
-                slots_created += 1
-            
-            # Map quarter number to month name
-            month_names = {1: 'February', 2: 'May', 3: 'August', 4: 'November'}
-            month_name = month_names.get(quarter_num, f'Q{quarter_num}')
-            
-            created_quarters.append({
-                'id': quarter_id,
-                'name': f"{month_name} {year} - MCES Education",
-                'meeting_date': meeting_date,
-                'slots_created': slots_created
-            })
-        
-        conn.commit()
-        conn.close()
-        
-        print(f"✅ Complete reset: Cleared {registration_count} registrations, {quarter_count} quarters")
-        
-        return jsonify({
-            'message': '🎉 SUCCESS! Complete system reset!',
-            'cleared_registrations': registration_count,
-            'cleared_quarters': quarter_count,
-            'created_quarters': created_quarters,
-            'status': 'Fresh 2026 MCES quarters created',
-            'next_step': 'System ready for production use!'
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            'message': f'Error resetting system: {str(e)}',
-            'error_type': type(e).__name__
-        }), 500
-
-@app.route('/api/admin/reset-quarter/<int:quarter_id>', methods=['GET'])
-def reset_specific_quarter(quarter_id):
-    """Reset a specific quarter - clear its registrations only"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Get quarter info
-        cursor.execute('''
-            SELECT q.year, q.quarter_number, q.meeting_date
-            FROM quarters q WHERE q.id = ?
-        ''', (quarter_id,))
-        
-        quarter_info = cursor.fetchone()
-        if not quarter_info:
-            return jsonify({'message': 'Quarter not found'}), 404
-        
-        # Count registrations for this quarter
-        cursor.execute('''
-            SELECT COUNT(*)
-            FROM speaker_registrations sr
-            JOIN lecture_slots ls ON sr.lecture_slot_id = ls.id
-            WHERE ls.quarter_id = ?
-        ''', (quarter_id,))
-        
-        registration_count = cursor.fetchone()[0]
-        
-        # Delete registrations for this quarter
-        cursor.execute('''
-            DELETE FROM speaker_registrations 
-            WHERE lecture_slot_id IN (
-                SELECT id FROM lecture_slots WHERE quarter_id = ?
-            )
-        ''', (quarter_id,))
-        
-        # Mark all slots for this quarter as available
-        cursor.execute('''
-            UPDATE lecture_slots SET is_available = 1 WHERE quarter_id = ?
-        ''', (quarter_id,))
-        
-        conn.commit()
-        conn.close()
-        
-        # Map quarter number to month name
-        month_names = {1: 'February', 2: 'May', 3: 'August', 4: 'November'}
-        month_name = month_names.get(quarter_info[1], f'Q{quarter_info[1]}')
-        quarter_name = f"{month_name} {quarter_info[0]} - MCES Education"
-        
-        print(f"✅ Quarter reset: {quarter_name} - cleared {registration_count} registrations")
-        
-        return jsonify({
-            'message': f'🎉 SUCCESS! {quarter_name} reset!',
-            'quarter': quarter_name,
-            'cleared_registrations': registration_count,
-            'status': 'All time slots for this quarter are now available'
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            'message': f'Error resetting quarter: {str(e)}',
-            'error_type': type(e).__name__
-        }), 500
-
-# QUARTER CREATION ENDPOINTS
-
-@app.route('/api/quarters/create-2026', methods=['GET'])
-def create_2026_quarters():
-    """Create the 2026 MCES quarters"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Check if 2026 quarters already exist
-        cursor.execute('SELECT COUNT(*) FROM quarters WHERE year = 2026')
-        existing_count = cursor.fetchone()[0]
-        
-        if existing_count > 0:
-            # Get existing quarters
-            quarters = get_quarters_data()
-            return jsonify({
-                'message': '✅ 2026 MCES quarters already exist!',
-                'quarters': quarters,
-                'count': len(quarters),
-                'status': 'already_exists'
-            }), 200
-        
-        # Create 2026 quarters
-        quarters_data = [
-            (2026, 1, '2026-02-15'),  # February
-            (2026, 2, '2026-05-15'),  # May
-            (2026, 3, '2026-08-15'),  # August
-            (2026, 4, '2026-11-15')   # November
-        ]
-        
-        created_quarters = []
-        
-        for year, quarter_num, meeting_date in quarters_data:
-            # Insert quarter
-            cursor.execute('''
-                INSERT INTO quarters (year, quarter_number, meeting_date, is_active)
-                VALUES (?, ?, ?, 1)
-            ''', (year, quarter_num, meeting_date))
-            
-            quarter_id = cursor.lastrowid
-            
-            # Get time slots
-            cursor.execute('SELECT id FROM time_slots ORDER BY start_time')
-            time_slots = cursor.fetchall()
-            
-            # Create lecture slots for this quarter
-            slots_created = 0
-            for time_slot in time_slots:
-                cursor.execute('''
-                    INSERT INTO lecture_slots (quarter_id, time_slot_id, is_available)
-                    VALUES (?, ?, 1)
-                ''', (quarter_id, time_slot[0]))
-                slots_created += 1
-            
-            # Map quarter number to month name
-            month_names = {1: 'February', 2: 'May', 3: 'August', 4: 'November'}
-            month_name = month_names.get(quarter_num, f'Q{quarter_num}')
-            
-            created_quarters.append({
-                'id': quarter_id,
-                'name': f"{month_name} {year} - MCES Education",
-                'meeting_date': meeting_date,
-                'slots_created': slots_created
-            })
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            'message': '🎉 SUCCESS! 2026 MCES quarters created!',
-            'quarters': created_quarters,
-            'count': len(created_quarters),
-            'schedule': 'February, May, August, November 2026'
-        }), 201
-        
-    except Exception as e:
-        return jsonify({
-            'message': f'Error creating 2026 quarters: {str(e)}',
-            'error_type': type(e).__name__
-        }), 500
-
-@app.route('/api/quarters/force-create', methods=['GET'])
-def force_create_quarters():
-    """Force create quarters even if they exist"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Delete existing 2026 quarters
-        cursor.execute('DELETE FROM quarters WHERE year = 2026')
-        
-        # Create 2026 quarters
-        quarters_data = [
-            (2026, 1, '2026-02-15'),  # February
-            (2026, 2, '2026-05-15'),  # May
-            (2026, 3, '2026-08-15'),  # August
-            (2026, 4, '2026-11-15')   # November
-        ]
-        
-        created_quarters = []
-        
-        for year, quarter_num, meeting_date in quarters_data:
-            # Insert quarter
-            cursor.execute('''
-                INSERT INTO quarters (year, quarter_number, meeting_date, is_active)
-                VALUES (?, ?, ?, 1)
-            ''', (year, quarter_num, meeting_date))
-            
-            quarter_id = cursor.lastrowid
-            
-            # Get time slots
-            cursor.execute('SELECT id FROM time_slots ORDER BY start_time')
-            time_slots = cursor.fetchall()
-            
-            # Create lecture slots for this quarter
-            slots_created = 0
-            for time_slot in time_slots:
-                cursor.execute('''
-                    INSERT INTO lecture_slots (quarter_id, time_slot_id, is_available)
-                    VALUES (?, ?, 1)
-                ''', (quarter_id, time_slot[0]))
-                slots_created += 1
-            
-            # Map quarter number to month name
-            month_names = {1: 'February', 2: 'May', 3: 'August', 4: 'November'}
-            month_name = month_names.get(quarter_num, f'Q{quarter_num}')
-            
-            created_quarters.append({
-                'id': quarter_id,
-                'name': f"{month_name} {year} - MCES Education",
-                'meeting_date': meeting_date,
-                'slots_created': slots_created
-            })
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            'message': '🎉 SUCCESS! 2026 MCES quarters force-created!',
-            'quarters': created_quarters,
-            'count': len(created_quarters),
-            'schedule': 'February, May, August, November 2026'
-        }), 201
-        
-    except Exception as e:
-        return jsonify({
-            'message': f'Error force-creating quarters: {str(e)}',
-            'error_type': type(e).__name__
-        }), 500
-
-@app.route('/api/database/debug', methods=['GET'])
-def database_debug():
-    """Debug database contents"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # Get table info
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [row[0] for row in cursor.fetchall()]
-        
-        debug_info = {
-            'database_exists': os.path.exists(DB_PATH),
-            'database_path': DB_PATH,
-            'tables': tables
-        }
-        
-        # Get quarters info
-        if 'quarters' in tables:
-            cursor.execute('SELECT * FROM quarters')
-            quarters_data = cursor.fetchall()
-            cursor.execute('PRAGMA table_info(quarters)')
-            quarters_columns = [col[1] for col in cursor.fetchall()]
-            
-            debug_info['quarters'] = {
-                'columns': quarters_columns,
-                'count': len(quarters_data),
-                'data': quarters_data
-            }
-        
-        # Get time slots info
-        if 'time_slots' in tables:
-            cursor.execute('SELECT * FROM time_slots')
-            time_slots_data = cursor.fetchall()
-            
-            debug_info['time_slots'] = {
-                'count': len(time_slots_data),
-                'data': time_slots_data
-            }
-        
-        # Get lecture slots info
-        if 'lecture_slots' in tables:
-            cursor.execute('SELECT * FROM lecture_slots')
-            lecture_slots_data = cursor.fetchall()
-            
-            debug_info['lecture_slots'] = {
-                'count': len(lecture_slots_data),
-                'data': lecture_slots_data
-            }
-        
-        # Get registrations info
-        if 'speaker_registrations' in tables:
-            cursor.execute('SELECT * FROM speaker_registrations')
-            registrations_data = cursor.fetchall()
-            
-            debug_info['speaker_registrations'] = {
-                'count': len(registrations_data),
-                'data': registrations_data
-            }
-        
-        conn.close()
-        
-        return jsonify(debug_info), 200
-        
-    except Exception as e:
-        return jsonify({
-            'message': f'Database debug error: {str(e)}',
-            'error_type': type(e).__name__
-        }), 500
-
-# ADMIN ENDPOINTS
-
-@app.route('/api/admin/login', methods=['POST'])
-def admin_login():
-    """Simple admin login with debugging"""
+@app.route('/api/admin-secure-mces-2024/login', methods=['POST'])
+def secure_admin_login():
+    """Secure admin login with rate limiting and proper authentication"""
     try:
         data = request.get_json()
-        print(f"Login attempt received: {data}")
+        ip_address = request.remote_addr
         
         if not data:
             return jsonify({
@@ -631,9 +426,17 @@ def admin_login():
         username = data.get('username', '').strip()
         password = data.get('password', '')
         
-        print(f"Login credentials - Username: '{username}', Password provided: {bool(password)}")
+        # Check rate limiting
+        if not check_login_attempts(ip_address):
+            log_login_attempt(ip_address, username, False)
+            log_admin_activity(username or 'unknown', 'LOGIN_BLOCKED_RATE_LIMIT', ip_address, False)
+            return jsonify({
+                'success': False,
+                'message': f'Too many failed login attempts. Please try again in {LOGIN_ATTEMPT_WINDOW} minutes.'
+            }), 429
         
         if not username or not password:
+            log_login_attempt(ip_address, username, False)
             return jsonify({
                 'success': False,
                 'message': 'Username and password are required'
@@ -642,68 +445,123 @@ def admin_login():
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
-        # Check what admin users exist
-        cursor.execute('SELECT username, password_hash FROM admin_users')
-        all_users = cursor.fetchall()
-        print(f"Available admin users: {all_users}")
-        
-        cursor.execute('SELECT id, email FROM admin_users WHERE username = ? AND password_hash = ?', 
-                      (username, password))
+        cursor.execute('''
+            SELECT id, username, password_hash, email, is_active 
+            FROM admin_users 
+            WHERE username = ? AND is_active = 1
+        ''', (username,))
         user = cursor.fetchone()
         
-        conn.close()
-        
-        if user:
-            print(f"Login successful for user: {username}")
-            return jsonify({
+        if user and verify_password(password, user[2]):
+            # Update last login
+            cursor.execute('''
+                UPDATE admin_users SET last_login = ? WHERE id = ?
+            ''', (datetime.now().isoformat(), user[0]))
+            conn.commit()
+            
+            # Generate JWT token
+            token = generate_jwt_token(user[0], user[1])
+            
+            # Log successful login
+            log_login_attempt(ip_address, username, True)
+            log_admin_activity(username, 'LOGIN_SUCCESS', ip_address, True)
+            
+            # Create response with secure cookie
+            response = make_response(jsonify({
                 'success': True,
                 'message': 'Login successful',
-                'user_id': user[0],
-                'email': user[1]
-            }), 200
+                'token': token,
+                'user': {
+                    'id': user[0],
+                    'username': user[1],
+                    'email': user[3]
+                }
+            }))
+            
+            # Set secure HTTP-only cookie
+            response.set_cookie(
+                'admin_token',
+                token,
+                max_age=JWT_EXPIRY_HOURS * 3600,
+                httponly=True,
+                secure=True,
+                samesite='Strict'
+            )
+            
+            conn.close()
+            return response, 200
         else:
-            print(f"Login failed for user: {username}")
+            # Log failed login
+            log_login_attempt(ip_address, username, False)
+            log_admin_activity(username, 'LOGIN_FAILED', ip_address, False)
+            
+            conn.close()
             return jsonify({
                 'success': False,
                 'message': 'Invalid username or password'
             }), 401
             
     except Exception as e:
-        print(f"Login error: {e}")
+        print(f"Secure login error: {e}")
         return jsonify({
             'success': False,
-            'message': f'Login error: {str(e)}'
+            'message': 'Login error occurred'
         }), 500
 
-@app.route('/api/admin/test', methods=['GET'])
-def admin_test():
-    """Test admin functionality"""
+@app.route('/api/admin-secure-mces-2024/logout', methods=['POST'])
+@require_admin_auth
+def secure_admin_logout():
+    """Secure admin logout"""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+        username = request.admin_user.get('username', 'unknown')
+        ip_address = request.remote_addr
         
-        cursor.execute('SELECT username, password_hash, email FROM admin_users')
-        users = cursor.fetchall()
+        log_admin_activity(username, 'LOGOUT', ip_address, True)
         
-        conn.close()
+        response = make_response(jsonify({
+            'success': True,
+            'message': 'Logged out successfully'
+        }))
         
+        # Clear the cookie
+        response.set_cookie('admin_token', '', expires=0)
+        
+        return response, 200
+        
+    except Exception as e:
+        print(f"Logout error: {e}")
         return jsonify({
-            'message': 'Admin test successful',
-            'admin_users': [{'username': u[0], 'password': u[1], 'email': u[2]} for u in users],
-            'database_path': DB_PATH,
-            'database_exists': os.path.exists(DB_PATH)
+            'success': False,
+            'message': 'Logout error occurred'
+        }), 500
+
+@app.route('/api/admin-secure-mces-2024/verify', methods=['GET'])
+@require_admin_auth
+def verify_admin_session():
+    """Verify admin session is still valid"""
+    try:
+        return jsonify({
+            'success': True,
+            'user': {
+                'id': request.admin_user['user_id'],
+                'username': request.admin_user['username']
+            }
         }), 200
         
     except Exception as e:
         return jsonify({
-            'message': f'Admin test error: {str(e)}',
-            'error_type': type(e).__name__
-        }), 500
+            'success': False,
+            'message': 'Session verification failed'
+        }), 401
 
-@app.route('/api/admin/registrations', methods=['GET'])
-def get_all_registrations():
-    """Get all speaker registrations for admin view"""
+@app.route('/api/admin-secure-mces-2024/registrations', methods=['GET'])
+@require_admin_auth
+def get_all_registrations_secure():
+    """Get all speaker registrations for secure admin view"""
     try:
+        username = request.admin_user.get('username', 'unknown')
+        log_admin_activity(username, 'VIEW_REGISTRATIONS', request.remote_addr, True)
+        
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
@@ -778,10 +636,54 @@ def get_all_registrations():
             'error_type': type(e).__name__
         }), 500
 
-@app.route('/api/admin/export/csv', methods=['GET'])
-def export_registrations_csv():
-    """Export all registrations as CSV data"""
+@app.route('/api/admin-secure-mces-2024/reset-registrations', methods=['POST'])
+@require_admin_auth
+def reset_registrations_secure():
+    """Secure reset of all speaker registrations"""
     try:
+        username = request.admin_user.get('username', 'unknown')
+        log_admin_activity(username, 'RESET_REGISTRATIONS', request.remote_addr, True)
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Count existing registrations
+        cursor.execute('SELECT COUNT(*) FROM speaker_registrations')
+        registration_count = cursor.fetchone()[0]
+        
+        # Delete all speaker registrations
+        cursor.execute('DELETE FROM speaker_registrations')
+        
+        # Mark all lecture slots as available
+        cursor.execute('UPDATE lecture_slots SET is_available = 1')
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"✅ Secure reset: Cleared {registration_count} registrations by {username}")
+        
+        return jsonify({
+            'message': f'🎉 SUCCESS! System reset complete!',
+            'cleared_registrations': registration_count,
+            'status': 'All time slots are now available',
+            'quarters_preserved': 'Your 2026 quarters remain intact',
+            'reset_by': username
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Error resetting registrations: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+@app.route('/api/admin-secure-mces-2024/export/csv', methods=['GET'])
+@require_admin_auth
+def export_registrations_csv_secure():
+    """Secure export of all registrations as CSV data"""
+    try:
+        username = request.admin_user.get('username', 'unknown')
+        log_admin_activity(username, 'EXPORT_CSV', request.remote_addr, True)
+        
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
@@ -856,7 +758,7 @@ def export_registrations_csv():
             'error_type': type(e).__name__
         }), 500
 
-# EXISTING ENDPOINTS (quarters, slots, registrations)
+# PUBLIC ENDPOINTS (quarters, slots, registrations)
 
 @app.route('/api/quarters', methods=['GET'])
 def get_all_quarters():
@@ -1047,5 +949,5 @@ def health_check():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print(f"🚀 Starting MCES Quarterly Education Series Scheduler on port {port}")
+    print(f"🔒 Secure admin access: /admin-secure-mces-2024")
     app.run(host='0.0.0.0', port=port, debug=False)
-
