@@ -12,62 +12,56 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            line-height: 1.6;
-            color: #333;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-        }
-
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
             padding: 20px;
         }
 
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
         .header {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
+            background: white;
             border-radius: 15px;
             padding: 40px;
             text-align: center;
             margin-bottom: 30px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         }
 
         .header h1 {
-            color: #2c3e50;
+            color: #2d3748;
             font-size: 2.5rem;
-            margin-bottom: 10px;
             font-weight: 700;
+            margin-bottom: 10px;
         }
 
         .header p {
-            color: #7f8c8d;
+            color: #718096;
             font-size: 1.1rem;
         }
 
         .main-content {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
+            background: white;
             border-radius: 15px;
             padding: 40px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         }
 
-        .action-buttons {
+        .button-group {
             display: flex;
             gap: 20px;
             justify-content: center;
-            flex-wrap: wrap;
             margin-bottom: 30px;
+            flex-wrap: wrap;
         }
 
         .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
             padding: 15px 30px;
+            border: none;
             border-radius: 10px;
             font-size: 1.1rem;
             font-weight: 600;
@@ -75,34 +69,68 @@
             transition: all 0.3s ease;
             text-decoration: none;
             display: inline-block;
-            min-width: 200px;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .btn-admin {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
         }
 
         .btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         }
 
-        .btn:active {
-            transform: translateY(0);
+        .info-box {
+            background: #e6fffa;
+            border: 1px solid #81e6d9;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
         }
 
-        .registration-form {
+        .info-box h3 {
+            color: #234e52;
+            margin-bottom: 10px;
+        }
+
+        .info-box p {
+            color: #285e61;
+            line-height: 1.6;
+        }
+
+        .hidden {
             display: none;
         }
 
+        /* Registration Form Styles */
+        .registration-form {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
         .form-section {
-            margin-bottom: 30px;
-            padding: 25px;
-            background: #f8f9fa;
+            background: #f8fafc;
             border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
             border-left: 4px solid #667eea;
         }
 
         .form-section h3 {
-            color: #2c3e50;
+            color: #2d3748;
             margin-bottom: 15px;
-            font-size: 1.3rem;
             display: flex;
             align-items: center;
             gap: 10px;
@@ -114,67 +142,68 @@
 
         .form-group label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
+            color: #4a5568;
             font-weight: 600;
-            color: #2c3e50;
         }
 
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
+        .form-control {
             width: 100%;
-            padding: 12px;
-            border: 2px solid #e1e8ed;
+            padding: 12px 15px;
+            border: 2px solid #e2e8f0;
             border-radius: 8px;
             font-size: 1rem;
             transition: border-color 0.3s ease;
         }
 
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
+        .form-control:focus {
             outline: none;
             border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
-        .time-slots-container {
-            display: grid;
-            gap: 15px;
-            margin-top: 15px;
+        select.form-control {
+            cursor: pointer;
+        }
+
+        textarea.form-control {
+            resize: vertical;
+            min-height: 100px;
         }
 
         .time-slot {
-            padding: 20px;
-            border: 2px solid #e1e8ed;
+            border: 2px solid #e2e8f0;
             border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
             cursor: pointer;
             transition: all 0.3s ease;
-            background: white;
         }
 
         .time-slot:hover {
             border-color: #667eea;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            background: #f7fafc;
         }
 
         .time-slot.selected {
             border-color: #667eea;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: #ebf8ff;
         }
 
         .time-slot.unavailable {
-            background: #f8f9fa;
-            border-color: #dee2e6;
+            background: #fed7d7;
+            border-color: #fc8181;
             cursor: not-allowed;
-            opacity: 0.6;
+            opacity: 0.7;
         }
 
-        .time-slot.unavailable:hover {
-            transform: none;
-            box-shadow: none;
+        .time-slot h4 {
+            color: #2d3748;
+            margin-bottom: 5px;
+        }
+
+        .time-slot p {
+            color: #718096;
+            margin: 0;
         }
 
         .alert {
@@ -183,72 +212,35 @@
             margin-bottom: 20px;
         }
 
-        .alert-info {
-            background: #e3f2fd;
-            border: 1px solid #bbdefb;
-            color: #1565c0;
-        }
-
         .alert-error {
-            background: #ffebee;
-            border: 1px solid #ffcdd2;
-            color: #c62828;
+            background: #fed7d7;
+            color: #c53030;
+            border: 1px solid #fc8181;
         }
 
         .alert-success {
-            background: #e8f5e8;
-            border: 1px solid #c8e6c9;
-            color: #2e7d32;
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #68d391;
         }
 
-        .back-btn {
-            background: #6c757d;
-            margin-bottom: 20px;
+        .alert-info {
+            background: #bee3f8;
+            color: #2a4365;
+            border: 1px solid #63b3ed;
         }
 
-        .success-message {
-            display: none;
-            text-align: center;
-            padding: 40px;
+        /* Admin Styles */
+        .admin-login {
+            max-width: 400px;
+            margin: 0 auto;
         }
 
-        .success-message h2 {
-            color: #28a745;
-            margin-bottom: 20px;
-            font-size: 2rem;
+        .admin-dashboard {
+            margin-top: 20px;
         }
 
-        .success-message p {
-            font-size: 1.1rem;
-            color: #6c757d;
-            margin-bottom: 10px;
-        }
-
-        .speaker-info {
-            font-size: 0.9rem;
-            margin-top: 10px;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 5px;
-        }
-
-        /* Admin Interface Styles */
-        .admin-interface {
-            display: none;
-        }
-
-        .admin-header {
-            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .admin-stats {
+        .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 20px;
@@ -256,365 +248,342 @@
         }
 
         .stat-card {
-            background: white;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
             padding: 20px;
             border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             text-align: center;
         }
 
-        .stat-number {
+        .stat-card h3 {
             font-size: 2rem;
-            font-weight: bold;
-            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-card p {
+            opacity: 0.9;
         }
 
         .registrations-table {
             background: white;
             border-radius: 10px;
             overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
         }
 
         .table-header {
-            background: #f8f9fa;
-            padding: 15px;
-            border-bottom: 1px solid #dee2e6;
-            font-weight: bold;
+            background: #f7fafc;
+            padding: 20px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .table-content {
+            max-height: 400px;
+            overflow-y: auto;
         }
 
         .registration-item {
-            padding: 15px;
-            border-bottom: 1px solid #dee2e6;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e2e8f0;
         }
 
         .registration-item:last-child {
             border-bottom: none;
         }
 
-        .admin-actions {
+        .registration-header {
             display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
         }
 
-        .btn-danger {
-            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        .speaker-name {
+            font-weight: 600;
+            color: #2d3748;
         }
 
-        .btn-success {
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        .registration-time {
+            color: #718096;
+            font-size: 0.9rem;
         }
 
-        .btn-secondary {
-            background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+        .registration-details {
+            color: #4a5568;
+            line-height: 1.5;
         }
 
-        /* Responsive Design */
         @media (max-width: 768px) {
-            .container {
-                padding: 10px;
-            }
-
             .header h1 {
                 font-size: 2rem;
             }
-
-            .action-buttons {
+            
+            .button-group {
                 flex-direction: column;
                 align-items: center;
             }
-
+            
             .btn {
                 width: 100%;
                 max-width: 300px;
             }
-
-            .admin-header {
-                flex-direction: column;
-                gap: 10px;
-                text-align: center;
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
             }
-
-            .admin-actions {
-                justify-content: center;
-            }
-        }
-
-        /* Secret admin access - triple click on title */
-        .secret-admin-trigger {
-            cursor: default;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Main Header -->
+        <!-- Header -->
         <div class="header">
-            <h1 class="secret-admin-trigger" onclick="handleTitleClick()">MCES Quarterly Education Series Scheduler</h1>
+            <h1>MCES Quarterly Education Series Scheduler</h1>
             <p>Register to present at upcoming MCES quarterly education meetings</p>
         </div>
 
         <!-- Main Content -->
-        <div class="main-content" id="main-content">
-            <div class="action-buttons">
-                <button class="btn" onclick="showRegistrationForm()">Register as Speaker</button>
+        <div class="main-content">
+            <!-- Home View -->
+            <div id="home-view">
+                <div class="button-group">
+                    <button class="btn btn-primary" onclick="showRegistration()">Register as Speaker</button>
+                    <button class="btn btn-admin" onclick="showAdminLogin()">Admin Access</button>
+                </div>
+
+                <div class="info-box">
+                    <h3>Welcome!</h3>
+                    <p>Select "Register as Speaker" to sign up for an upcoming MCES quarterly education meeting. Choose your preferred time slot and provide your presentation details.</p>
+                </div>
             </div>
 
-            <div class="alert alert-info">
-                <strong>Welcome!</strong> Select "Register as Speaker" to sign up for an upcoming MCES quarterly education meeting. 
-                Choose your preferred time slot and provide your presentation details.
-            </div>
-        </div>
-
-        <!-- Speaker Registration Form -->
-        <div class="registration-form" id="registration-form">
-            <div class="main-content">
-                <button class="btn back-btn" onclick="showMainContent()">← Back to Home</button>
+            <!-- Registration View -->
+            <div id="registration-view" class="hidden">
+                <button class="btn btn-secondary" onclick="showHome()" style="margin-bottom: 20px;">← Back to Home</button>
                 
-                <h2>Speaker Registration</h2>
-                <p>Register to present at an upcoming MCES quarterly education meeting</p>
+                <h2 style="text-align: center; margin-bottom: 30px; color: #2d3748;">Speaker Registration</h2>
+                <p style="text-align: center; margin-bottom: 30px; color: #718096;">Register to present at an upcoming MCES quarterly education meeting</p>
 
-                <div id="registration-content">
+                <div class="registration-form">
                     <!-- Step 1: Select Quarter -->
                     <div class="form-section">
                         <h3>📅 Step 1: Select Quarterly Meeting</h3>
-                        <p>Choose which quarterly meeting you'd like to present at</p>
+                        <p style="margin-bottom: 15px; color: #718096;">Choose which quarterly meeting you'd like to present at</p>
                         
                         <div class="form-group">
-                            <select id="quarter-select" onchange="loadTimeSlots()">
+                            <select id="quarter-select" class="form-control" onchange="loadTimeSlots()">
                                 <option value="">Select a quarterly meeting...</option>
                             </select>
                         </div>
                         
-                        <div id="no-quarters-message" style="display: none;">
-                            <div class="alert alert-error">
-                                No active quarterly meetings available at this time.
-                            </div>
+                        <div id="no-quarters-message" class="alert alert-info hidden">
+                            No active quarterly meetings available at this time.
                         </div>
                     </div>
 
                     <!-- Step 2: Select Time Slot -->
-                    <div class="form-section" id="time-slot-step" style="display: none;">
+                    <div id="time-slot-section" class="form-section hidden">
                         <h3>🕒 Step 2: Select Time Slot</h3>
-                        <p>Choose your preferred presentation time</p>
-                        
-                        <div id="time-slots-container" class="time-slots-container">
-                            <!-- Time slots will be loaded here -->
-                        </div>
+                        <div id="time-slots-container"></div>
                     </div>
 
                     <!-- Step 3: Speaker Information -->
-                    <div class="form-section" id="speaker-info-step" style="display: none;">
+                    <div id="speaker-info-section" class="form-section hidden">
                         <h3>👤 Step 3: Speaker Information</h3>
-                        <p>Please provide your details and presentation information</p>
                         
-                        <form id="speaker-form">
-                            <div class="form-group">
-                                <label for="speaker-name">Full Name *</label>
-                                <input type="text" id="speaker-name" required>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="speaker-email">Email Address *</label>
-                                <input type="email" id="speaker-email" required>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="speaker-phone">Phone Number</label>
-                                <input type="tel" id="speaker-phone">
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="specialty">Medical Specialty/Department</label>
-                                <input type="text" id="specialty" placeholder="e.g., Emergency Medicine, Cardiology">
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="topic-title">Presentation Title *</label>
-                                <input type="text" id="topic-title" required>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="topic-description">Presentation Description</label>
-                                <textarea id="topic-description" rows="4" placeholder="Brief description of your presentation topic and learning objectives"></textarea>
-                            </div>
-                            
-                            <button type="submit" class="btn">Complete Registration</button>
-                        </form>
+                        <div class="form-group">
+                            <label for="speaker-name">Full Name *</label>
+                            <input type="text" id="speaker-name" class="form-control" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="speaker-email">Email Address *</label>
+                            <input type="email" id="speaker-email" class="form-control" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="speaker-phone">Phone Number</label>
+                            <input type="tel" id="speaker-phone" class="form-control">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="specialty">Medical Specialty</label>
+                            <input type="text" id="specialty" class="form-control" placeholder="e.g., Emergency Medicine, Cardiology">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="topic-title">Presentation Topic *</label>
+                            <input type="text" id="topic-title" class="form-control" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="topic-description">Topic Description</label>
+                            <textarea id="topic-description" class="form-control" placeholder="Brief description of your presentation..."></textarea>
+                        </div>
+                        
+                        <button type="button" class="btn btn-primary" onclick="submitRegistration()" style="width: 100%; margin-top: 20px;">
+                            Complete Registration
+                        </button>
                     </div>
                 </div>
-
-                <!-- Success Message -->
-                <div id="registration-success" class="success-message">
-                    <h2>🎉 Registration Successful!</h2>
-                    <p>Thank you for registering to present at the MCES quarterly education meeting.</p>
-                    <p>You will receive a confirmation email shortly with meeting details.</p>
-                    <p>If you have any questions, please contact the education coordinator.</p>
-                    <button class="btn" onclick="resetRegistration()">Register Another Speaker</button>
-                </div>
             </div>
-        </div>
 
-        <!-- Admin Interface -->
-        <div class="admin-interface" id="admin-interface">
-            <div class="main-content">
-                <!-- Admin Login -->
-                <div id="admin-login" class="form-section">
-                    <h3>🔒 Secure Admin Access</h3>
-                    <p>Enter your secure credentials to access the admin dashboard</p>
+            <!-- Admin Login View -->
+            <div id="admin-login-view" class="hidden">
+                <button class="btn btn-secondary" onclick="showHome()" style="margin-bottom: 20px;">← Back to Home</button>
+                
+                <h2 style="text-align: center; margin-bottom: 30px; color: #2d3748;">Admin Login</h2>
+                
+                <div class="admin-login">
+                    <div class="form-group">
+                        <label for="admin-username">Username</label>
+                        <input type="text" id="admin-username" class="form-control" value="admin">
+                    </div>
                     
-                    <form id="admin-login-form">
-                        <div class="form-group">
-                            <label for="admin-username">Username</label>
-                            <input type="text" id="admin-username" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="admin-password">Password</label>
-                            <input type="password" id="admin-password" required>
-                        </div>
-                        
-                        <button type="submit" class="btn">Sign In</button>
-                        <button type="button" class="btn btn-secondary" onclick="showMainContent()">Cancel</button>
-                    </form>
+                    <div class="form-group">
+                        <label for="admin-password">Password</label>
+                        <input type="password" id="admin-password" class="form-control" value="admin123">
+                    </div>
                     
-                    <div id="login-error" style="display: none;" class="alert alert-error">
+                    <button type="button" class="btn btn-primary" onclick="adminLogin()" style="width: 100%;">
+                        Sign In
+                    </button>
+                    
+                    <div id="admin-login-error" class="alert alert-error hidden" style="margin-top: 15px;">
                         Invalid credentials. Please try again.
                     </div>
                 </div>
+            </div>
 
-                <!-- Admin Dashboard -->
-                <div id="admin-dashboard" style="display: none;">
-                    <div class="admin-header">
-                        <div>
-                            <h2>MCES Admin Dashboard</h2>
-                            <p>Manage quarterly education meetings and speaker registrations</p>
-                        </div>
-                        <div>
-                            <button class="btn btn-secondary" onclick="adminLogout()">Logout</button>
+            <!-- Admin Dashboard View -->
+            <div id="admin-dashboard-view" class="hidden">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+                    <h2 style="color: #2d3748; margin: 0;">Admin Dashboard</h2>
+                    <button class="btn btn-secondary" onclick="adminLogout()">Logout</button>
+                </div>
+
+                <!-- Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3 id="total-registrations">0</h3>
+                        <p>Total Registrations</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3 id="unique-speakers">0</h3>
+                        <p>Unique Speakers</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3 id="active-quarters">0</h3>
+                        <p>Active Quarters</p>
+                    </div>
+                </div>
+
+                <!-- Admin Actions -->
+                <div class="button-group" style="margin-bottom: 30px;">
+                    <button class="btn btn-primary" onclick="refreshAdminData()">Refresh Data</button>
+                    <button class="btn btn-secondary" onclick="exportRegistrations()">Export to CSV</button>
+                    <button class="btn" style="background: #fed7d7; color: #c53030;" onclick="resetRegistrations()">Reset All Registrations</button>
+                </div>
+
+                <!-- Registrations Table -->
+                <div class="registrations-table">
+                    <div class="table-header">
+                        <h3 style="margin: 0; color: #2d3748;">Speaker Registrations</h3>
+                    </div>
+                    <div class="table-content" id="registrations-list">
+                        <div style="padding: 40px; text-align: center; color: #718096;">
+                            Loading registrations...
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    <div class="admin-stats" id="admin-stats">
-                        <!-- Stats will be loaded here -->
+            <!-- Success View -->
+            <div id="success-view" class="hidden">
+                <div style="text-align: center;">
+                    <h2 style="color: #22543d; margin-bottom: 20px;">🎉 Registration Successful!</h2>
+                    <div class="alert alert-success">
+                        <p><strong>Thank you for registering!</strong></p>
+                        <p>Your presentation slot has been confirmed. You will receive a confirmation email shortly with meeting details.</p>
                     </div>
-
-                    <div class="admin-actions">
-                        <button class="btn btn-danger" onclick="resetRegistrations()">Reset All Registrations</button>
-                        <button class="btn btn-success" onclick="exportCSV()">Export to CSV</button>
-                        <button class="btn btn-secondary" onclick="refreshDashboard()">Refresh Data</button>
-                    </div>
-
-                    <div class="registrations-table">
-                        <div class="table-header">
-                            Speaker Registrations
-                        </div>
-                        <div id="registrations-list">
-                            <!-- Registrations will be loaded here -->
-                        </div>
-                    </div>
+                    <button class="btn btn-primary" onclick="showHome()">Return to Home</button>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
+        // Global variables
+        let quarters = [];
         let selectedQuarter = null;
-        let selectedSlot = null;
-        let adminToken = null;
-        let titleClickCount = 0;
-        let titleClickTimer = null;
+        let selectedTimeSlot = null;
+        let adminLoggedIn = false;
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('MCES Quarterly Education Series Scheduler initialized');
-            
-            // Check if there's an admin token in localStorage
-            const savedToken = localStorage.getItem('mces_admin_token');
-            if (savedToken) {
-                adminToken = savedToken;
-                verifyAdminSession();
-            }
+            loadQuarters();
         });
 
-        // Secret admin access via triple-click on title
-        function handleTitleClick() {
-            titleClickCount++;
-            
-            if (titleClickTimer) {
-                clearTimeout(titleClickTimer);
-            }
-            
-            titleClickTimer = setTimeout(() => {
-                if (titleClickCount >= 3) {
-                    showAdminInterface();
-                }
-                titleClickCount = 0;
-            }, 500);
+        // Navigation functions
+        function showHome() {
+            hideAllViews();
+            document.getElementById('home-view').classList.remove('hidden');
         }
 
-        // Show main content
-        function showMainContent() {
-            document.getElementById('main-content').style.display = 'block';
-            document.getElementById('registration-form').style.display = 'none';
-            document.getElementById('admin-interface').style.display = 'none';
-        }
-
-        // Show registration form
-        function showRegistrationForm() {
-            document.getElementById('main-content').style.display = 'none';
-            document.getElementById('registration-form').style.display = 'block';
-            document.getElementById('admin-interface').style.display = 'none';
+        function showRegistration() {
+            hideAllViews();
+            document.getElementById('registration-view').classList.remove('hidden');
             loadQuarters();
         }
 
-        // Show admin interface (secret access)
-        function showAdminInterface() {
-            document.getElementById('main-content').style.display = 'none';
-            document.getElementById('registration-form').style.display = 'none';
-            document.getElementById('admin-interface').style.display = 'block';
-            
-            // If already logged in, show dashboard
-            if (adminToken) {
-                verifyAdminSession();
-            } else {
-                document.getElementById('admin-login').style.display = 'block';
-                document.getElementById('admin-dashboard').style.display = 'none';
-            }
+        function showAdminLogin() {
+            hideAllViews();
+            document.getElementById('admin-login-view').classList.remove('hidden');
         }
 
-        // Load available quarters
+        function showAdminDashboard() {
+            hideAllViews();
+            document.getElementById('admin-dashboard-view').classList.remove('hidden');
+            loadAdminData();
+        }
+
+        function showSuccess() {
+            hideAllViews();
+            document.getElementById('success-view').classList.remove('hidden');
+        }
+
+        function hideAllViews() {
+            const views = ['home-view', 'registration-view', 'admin-login-view', 'admin-dashboard-view', 'success-view'];
+            views.forEach(view => {
+                document.getElementById(view).classList.add('hidden');
+            });
+        }
+
+        // Load quarters from API
         async function loadQuarters() {
             try {
-                console.log('Loading quarters...');
                 const response = await fetch('/api/quarters');
-                const quarters = await response.json();
+                quarters = await response.json();
                 
-                const select = document.getElementById('quarter-select');
+                const quarterSelect = document.getElementById('quarter-select');
                 const noQuartersMessage = document.getElementById('no-quarters-message');
                 
-                select.innerHTML = '<option value="">Select a quarterly meeting...</option>';
+                quarterSelect.innerHTML = '<option value="">Select a quarterly meeting...</option>';
                 
-                if (quarters && quarters.length > 0) {
+                if (quarters.length === 0) {
+                    noQuartersMessage.classList.remove('hidden');
+                } else {
+                    noQuartersMessage.classList.add('hidden');
                     quarters.forEach(quarter => {
                         const option = document.createElement('option');
                         option.value = quarter.id;
                         option.textContent = `${quarter.name} - ${quarter.meeting_date} (${quarter.available_slots} slots available)`;
-                        select.appendChild(option);
+                        quarterSelect.appendChild(option);
                     });
-                    
-                    noQuartersMessage.style.display = 'none';
-                    console.log(`Loaded ${quarters.length} quarters`);
-                } else {
-                    noQuartersMessage.style.display = 'block';
-                    console.log('No quarters available');
                 }
-                
             } catch (error) {
                 console.error('Error loading quarters:', error);
-                document.getElementById('no-quarters-message').style.display = 'block';
+                document.getElementById('no-quarters-message').classList.remove('hidden');
             }
         }
 
@@ -624,99 +593,82 @@
             const quarterId = quarterSelect.value;
             
             if (!quarterId) {
-                document.getElementById('time-slot-step').style.display = 'none';
-                document.getElementById('speaker-info-step').style.display = 'none';
+                document.getElementById('time-slot-section').classList.add('hidden');
+                document.getElementById('speaker-info-section').classList.add('hidden');
                 return;
             }
             
-            selectedQuarter = quarterId;
+            selectedQuarter = quarters.find(q => q.id == quarterId);
             
             try {
-                console.log(`Loading time slots for quarter ${quarterId}`);
                 const response = await fetch(`/api/quarters/${quarterId}/slots`);
-                const slots = await response.json();
+                const timeSlots = await response.json();
                 
                 const container = document.getElementById('time-slots-container');
                 container.innerHTML = '';
                 
-                if (!slots || slots.length === 0) {
-                    container.innerHTML = '<div class="alert alert-error">No time slots available for this quarter.</div>';
-                    return;
-                }
-                
-                slots.forEach(slot => {
+                timeSlots.forEach(slot => {
                     const slotDiv = document.createElement('div');
-                    slotDiv.className = `time-slot ${slot.is_available ? 'available' : 'unavailable'}`;
+                    slotDiv.className = `time-slot ${slot.is_available ? '' : 'unavailable'}`;
+                    slotDiv.onclick = slot.is_available ? () => selectTimeSlot(slot) : null;
                     
-                    const timeDisplay = slot.time_display;
-                    
-                    let slotName = slot.slot_name || '';
-                    if (slotName.includes('(')) {
-                        slotName = slotName.split('(')[0].trim();
+                    let statusText = slot.is_available ? 'Available' : 'Booked';
+                    if (!slot.is_available && slot.speaker_name) {
+                        statusText = `Booked by ${slot.speaker_name}`;
                     }
                     
-                    let slotContent = `
-                        <strong>${timeDisplay}</strong><br>
-                        <span>${slotName}</span><br>
+                    slotDiv.innerHTML = `
+                        <h4>${slot.time_display}</h4>
+                        <p>${slot.slot_name}</p>
+                        <p><strong>Status:</strong> ${statusText}</p>
                     `;
                     
-                    if (slot.is_available) {
-                        slotContent += '<small>Available</small>';
-                        slotDiv.onclick = () => selectTimeSlot(slot, slotDiv);
-                    } else {
-                        slotContent += '<small>Already booked</small>';
-                        if (slot.speaker_name) {
-                            slotContent += `
-                                <div class="speaker-info">
-                                    <strong>Speaker:</strong> ${slot.speaker_name}<br>
-                                    <strong>Topic:</strong> ${slot.topic_title || 'Not specified'}
-                                </div>
-                            `;
-                        }
-                    }
-                    
-                    slotDiv.innerHTML = slotContent;
                     container.appendChild(slotDiv);
                 });
                 
-                document.getElementById('time-slot-step').style.display = 'block';
+                document.getElementById('time-slot-section').classList.remove('hidden');
                 
             } catch (error) {
                 console.error('Error loading time slots:', error);
-                document.getElementById('time-slots-container').innerHTML = 
-                    '<div class="alert alert-error">Error loading time slots. Please try again.</div>';
             }
         }
 
         // Select time slot
-        function selectTimeSlot(slot, element) {
+        function selectTimeSlot(slot) {
+            // Remove previous selection
             document.querySelectorAll('.time-slot').forEach(el => {
                 el.classList.remove('selected');
             });
             
-            element.classList.add('selected');
-            selectedSlot = slot;
+            // Add selection to clicked slot
+            event.target.closest('.time-slot').classList.add('selected');
             
-            document.getElementById('speaker-info-step').style.display = 'block';
+            selectedTimeSlot = slot;
+            document.getElementById('speaker-info-section').classList.remove('hidden');
         }
 
-        // Handle form submission
-        document.getElementById('speaker-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
+        // Submit registration
+        async function submitRegistration() {
+            const speakerName = document.getElementById('speaker-name').value.trim();
+            const speakerEmail = document.getElementById('speaker-email').value.trim();
+            const speakerPhone = document.getElementById('speaker-phone').value.trim();
+            const specialty = document.getElementById('specialty').value.trim();
+            const topicTitle = document.getElementById('topic-title').value.trim();
+            const topicDescription = document.getElementById('topic-description').value.trim();
             
-            if (!selectedSlot) {
-                alert('Please select a time slot first.');
+            if (!speakerName || !speakerEmail || !topicTitle || !selectedTimeSlot) {
+                alert('Please fill in all required fields and select a time slot.');
                 return;
             }
             
-            const formData = {
-                lecture_slot_id: selectedSlot.lecture_slot_id,
-                speaker_name: document.getElementById('speaker-name').value,
-                speaker_email: document.getElementById('speaker-email').value,
-                speaker_phone: document.getElementById('speaker-phone').value,
-                specialty: document.getElementById('specialty').value,
-                topic_title: document.getElementById('topic-title').value,
-                topic_description: document.getElementById('topic-description').value
+            const registrationData = {
+                lecture_slot_id: selectedTimeSlot.lecture_slot_id,
+                speaker_name: speakerName,
+                speaker_email: speakerEmail,
+                speaker_phone: speakerPhone,
+                specialty: specialty,
+                topic_title: topicTitle,
+                topic_description: topicDescription
             };
             
             try {
@@ -725,46 +677,36 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(formData)
+                    body: JSON.stringify(registrationData)
                 });
                 
-                const result = await response.json();
-                
                 if (response.ok) {
-                    document.getElementById('registration-content').style.display = 'none';
-                    document.getElementById('registration-success').style.display = 'block';
+                    // Clear form
+                    document.getElementById('speaker-name').value = '';
+                    document.getElementById('speaker-email').value = '';
+                    document.getElementById('speaker-phone').value = '';
+                    document.getElementById('specialty').value = '';
+                    document.getElementById('topic-title').value = '';
+                    document.getElementById('topic-description').value = '';
+                    
+                    showSuccess();
                 } else {
-                    alert(`Registration failed: ${result.message}`);
+                    const error = await response.json();
+                    alert(`Registration failed: ${error.message}`);
                 }
-                
             } catch (error) {
                 console.error('Error submitting registration:', error);
-                alert('Error submitting registration. Please try again.');
+                alert('Registration failed. Please try again.');
             }
-        });
-
-        // Reset registration form
-        function resetRegistration() {
-            document.getElementById('registration-content').style.display = 'block';
-            document.getElementById('registration-success').style.display = 'none';
-            document.getElementById('speaker-form').reset();
-            document.getElementById('quarter-select').value = '';
-            document.getElementById('time-slot-step').style.display = 'none';
-            document.getElementById('speaker-info-step').style.display = 'none';
-            selectedQuarter = null;
-            selectedSlot = null;
-            loadQuarters();
         }
 
-        // Admin login
-        document.getElementById('admin-login-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
+        // Admin functions
+        async function adminLogin() {
             const username = document.getElementById('admin-username').value;
             const password = document.getElementById('admin-password').value;
             
             try {
-                const response = await fetch('/api/admin-secure-mces/login', {
+                const response = await fetch('/api/admin/login', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -775,224 +717,138 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    adminToken = result.token;
-                    localStorage.setItem('mces_admin_token', adminToken);
-                    
-                    document.getElementById('admin-login').style.display = 'none';
-                    document.getElementById('admin-dashboard').style.display = 'block';
-                    document.getElementById('login-error').style.display = 'none';
-                    
-                    loadAdminDashboard();
+                    adminLoggedIn = true;
+                    showAdminDashboard();
                 } else {
-                    document.getElementById('login-error').textContent = result.message;
-                    document.getElementById('login-error').style.display = 'block';
+                    document.getElementById('admin-login-error').classList.remove('hidden');
                 }
-                
             } catch (error) {
                 console.error('Login error:', error);
-                document.getElementById('login-error').textContent = 'Login failed. Please try again.';
-                document.getElementById('login-error').style.display = 'block';
-            }
-        });
-
-        // Verify admin session
-        async function verifyAdminSession() {
-            if (!adminToken) return false;
-            
-            try {
-                const response = await fetch('/api/admin-secure-mces/verify', {
-                    headers: {
-                        'Authorization': `Bearer ${adminToken}`
-                    }
-                });
-                
-                if (response.ok) {
-                    document.getElementById('admin-login').style.display = 'none';
-                    document.getElementById('admin-dashboard').style.display = 'block';
-                    loadAdminDashboard();
-                    return true;
-                } else {
-                    adminToken = null;
-                    localStorage.removeItem('mces_admin_token');
-                    return false;
-                }
-                
-            } catch (error) {
-                console.error('Session verification error:', error);
-                adminToken = null;
-                localStorage.removeItem('mces_admin_token');
-                return false;
+                document.getElementById('admin-login-error').classList.remove('hidden');
             }
         }
 
-        // Load admin dashboard
-        async function loadAdminDashboard() {
-            if (!adminToken) return;
-            
+        function adminLogout() {
+            adminLoggedIn = false;
+            showHome();
+        }
+
+        // Load admin data
+        async function loadAdminData() {
             try {
-                // Load registrations
-                const response = await fetch('/api/admin-secure-mces/registrations', {
-                    headers: {
-                        'Authorization': `Bearer ${adminToken}`
-                    }
-                });
-                
+                const response = await fetch('/api/admin/registrations');
                 const data = await response.json();
                 
-                if (response.ok) {
-                    displayAdminStats(data);
-                    displayRegistrations(data.registrations);
+                // Update stats
+                document.getElementById('total-registrations').textContent = data.count;
+                document.getElementById('unique-speakers').textContent = new Set(data.registrations.map(r => r.speaker_email)).size;
+                document.getElementById('active-quarters').textContent = quarters.length;
+                
+                // Update registrations list
+                const container = document.getElementById('registrations-list');
+                
+                if (data.registrations.length === 0) {
+                    container.innerHTML = '<div style="padding: 40px; text-align: center; color: #718096;">No registrations yet.</div>';
                 } else {
-                    console.error('Error loading admin data:', data);
+                    container.innerHTML = data.registrations.map(reg => `
+                        <div class="registration-item">
+                            <div class="registration-header">
+                                <span class="speaker-name">${reg.speaker_name}</span>
+                                <span class="registration-time">${new Date(reg.registered_at).toLocaleDateString()}</span>
+                            </div>
+                            <div class="registration-details">
+                                <p><strong>Email:</strong> ${reg.speaker_email}</p>
+                                <p><strong>Phone:</strong> ${reg.speaker_phone || 'Not provided'}</p>
+                                <p><strong>Specialty:</strong> ${reg.specialty || 'Not provided'}</p>
+                                <p><strong>Meeting:</strong> ${reg.quarter_name} - ${reg.meeting_date}</p>
+                                <p><strong>Time Slot:</strong> ${reg.time_slot}</p>
+                                <p><strong>Topic:</strong> ${reg.topic_title}</p>
+                                ${reg.topic_description ? `<p><strong>Description:</strong> ${reg.topic_description}</p>` : ''}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Error loading admin data:', error);
+            }
+        }
+
+        function refreshAdminData() {
+            loadAdminData();
+            loadQuarters();
+        }
+
+        // Export registrations to CSV
+        async function exportRegistrations() {
+            try {
+                const response = await fetch('/api/admin/registrations');
+                const data = await response.json();
+                
+                if (data.registrations.length === 0) {
+                    alert('No registrations to export.');
+                    return;
                 }
                 
+                // Create CSV content
+                const headers = ['Name', 'Email', 'Phone', 'Specialty', 'Quarter', 'Meeting Date', 'Time Slot', 'Topic', 'Description', 'Registered At'];
+                const csvContent = [
+                    headers.join(','),
+                    ...data.registrations.map(reg => [
+                        `"${reg.speaker_name}"`,
+                        `"${reg.speaker_email}"`,
+                        `"${reg.speaker_phone || ''}"`,
+                        `"${reg.specialty || ''}"`,
+                        `"${reg.quarter_name}"`,
+                        `"${reg.meeting_date}"`,
+                        `"${reg.time_slot}"`,
+                        `"${reg.topic_title}"`,
+                        `"${reg.topic_description || ''}"`,
+                        `"${reg.registered_at}"`
+                    ].join(','))
+                ].join('\n');
+                
+                // Download CSV
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `MCES_Registrations_${new Date().toISOString().split('T')[0]}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
             } catch (error) {
-                console.error('Error loading admin dashboard:', error);
+                console.error('Error exporting registrations:', error);
+                alert('Export failed. Please try again.');
             }
         }
 
-        // Display admin stats
-        function displayAdminStats(data) {
-            const statsContainer = document.getElementById('admin-stats');
-            
-            // Calculate stats
-            const totalRegistrations = data.count || 0;
-            const quarters = new Set();
-            const speakers = new Set();
-            
-            if (data.registrations) {
-                data.registrations.forEach(reg => {
-                    quarters.add(reg.quarter_name);
-                    speakers.add(reg.speaker_email);
-                });
-            }
-            
-            statsContainer.innerHTML = `
-                <div class="stat-card">
-                    <div class="stat-number">${totalRegistrations}</div>
-                    <div>Total Registrations</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">${speakers.size}</div>
-                    <div>Unique Speakers</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">${quarters.size}</div>
-                    <div>Active Quarters</div>
-                </div>
-            `;
-        }
-
-        // Display registrations
-        function displayRegistrations(registrations) {
-            const container = document.getElementById('registrations-list');
-            
-            if (!registrations || registrations.length === 0) {
-                container.innerHTML = '<div style="padding: 20px; text-align: center; color: #6c757d;">No registrations found.</div>';
-                return;
-            }
-            
-            container.innerHTML = registrations.map(reg => `
-                <div class="registration-item">
-                    <strong>${reg.speaker_name}</strong> - ${reg.topic_title}<br>
-                    <small>
-                        ${reg.quarter_name} | ${reg.time_slot} | ${reg.speaker_email}
-                        ${reg.speaker_phone ? ' | ' + reg.speaker_phone : ''}
-                        ${reg.specialty ? ' | ' + reg.specialty : ''}
-                    </small>
-                    ${reg.topic_description ? '<br><em>' + reg.topic_description + '</em>' : ''}
-                </div>
-            `).join('');
-        }
-
-        // Admin logout
-        async function adminLogout() {
-            try {
-                if (adminToken) {
-                    await fetch('/api/admin-secure-mces/logout', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${adminToken}`
-                        }
-                    });
-                }
-            } catch (error) {
-                console.error('Logout error:', error);
-            }
-            
-            adminToken = null;
-            localStorage.removeItem('mces_admin_token');
-            showMainContent();
-        }
-
-        // Reset registrations
+        // Reset all registrations
         async function resetRegistrations() {
-            if (!confirm('Are you sure you want to reset all registrations? This action cannot be undone.')) {
+            if (!confirm('Are you sure you want to reset all registrations? This will clear all speaker data and make all time slots available again.')) {
                 return;
             }
             
             try {
-                const response = await fetch('/api/admin-secure-mces/reset-registrations', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${adminToken}`
-                    }
+                const response = await fetch('/api/admin/reset-registrations', {
+                    method: 'POST'
                 });
                 
                 const result = await response.json();
                 
                 if (response.ok) {
-                    alert(`Success! ${result.cleared_registrations} registrations cleared.`);
-                    loadAdminDashboard();
+                    alert(result.message);
+                    loadAdminData();
+                    loadQuarters();
                 } else {
-                    alert(`Error: ${result.message}`);
+                    alert(`Reset failed: ${result.message}`);
                 }
-                
             } catch (error) {
-                console.error('Reset error:', error);
-                alert('Error resetting registrations. Please try again.');
+                console.error('Error resetting registrations:', error);
+                alert('Reset failed. Please try again.');
             }
         }
-
-        // Export CSV
-        async function exportCSV() {
-            try {
-                const response = await fetch('/api/admin-secure-mces/export/csv', {
-                    headers: {
-                        'Authorization': `Bearer ${adminToken}`
-                    }
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    // Create and download CSV file
-                    const blob = new Blob([result.csv_data], { type: 'text/csv' });
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = result.filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-                } else {
-                    alert(`Error: ${result.message}`);
-                }
-                
-            } catch (error) {
-                console.error('Export error:', error);
-                alert('Error exporting CSV. Please try again.');
-            }
-        }
-
-        // Refresh dashboard
-        function refreshDashboard() {
-            loadAdminDashboard();
-        }
-
-        // Initialize
-        console.log('MCES Quarterly Education Series Scheduler initialized');
     </script>
 </body>
 </html>
