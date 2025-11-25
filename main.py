@@ -182,7 +182,7 @@ def get_quarters_data():
         
         quarters = cursor.fetchall()
         
-        # Map quarter numbers to months for 2026 schedule
+        # Map quarter numbers to months for MCES schedule
         quarter_months = {
             1: 'February',
             2: 'May', 
@@ -296,6 +296,209 @@ def create_2026_quarters():
     except Exception as e:
         return jsonify({
             'message': f'Error creating 2026 quarters: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+@app.route('/api/admin/create-academic-year', methods=['POST'])
+def create_academic_year():
+    """Create a new academic year with custom dates"""
+    try:
+        data = request.get_json()
+        year = data.get('year')
+        quarters_data = data.get('quarters')  # Array of {quarter_number, meeting_date}
+        
+        if not year or not quarters_data:
+            return jsonify({
+                'message': 'Year and quarters data are required',
+                'error_type': 'ValidationError'
+            }), 400
+        
+        # Validate year
+        if not isinstance(year, int) or year < 2025 or year > 2050:
+            return jsonify({
+                'message': 'Year must be between 2025 and 2050',
+                'error_type': 'ValidationError'
+            }), 400
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check if year already exists
+        cursor.execute('SELECT COUNT(*) FROM quarters WHERE year = ?', (year,))
+        existing_count = cursor.fetchone()[0]
+        
+        if existing_count > 0:
+            return jsonify({
+                'message': f'Academic year {year} already exists. Delete it first if you want to recreate it.',
+                'error_type': 'ConflictError'
+            }), 409
+        
+        created_quarters = []
+        
+        for quarter_data in quarters_data:
+            quarter_num = quarter_data.get('quarter_number')
+            meeting_date = quarter_data.get('meeting_date')
+            
+            if not quarter_num or not meeting_date:
+                continue
+            
+            # Insert quarter
+            cursor.execute('''
+                INSERT INTO quarters (year, quarter_number, meeting_date, is_active)
+                VALUES (?, ?, ?, 1)
+            ''', (year, quarter_num, meeting_date))
+            
+            quarter_id = cursor.lastrowid
+            
+            # Get time slots
+            cursor.execute('SELECT id FROM time_slots ORDER BY start_time')
+            time_slots = cursor.fetchall()
+            
+            slots_created = 0
+            # Create lecture slots for this quarter
+            for time_slot in time_slots:
+                cursor.execute('''
+                    INSERT INTO lecture_slots (quarter_id, time_slot_id, is_available)
+                    VALUES (?, ?, 1)
+                ''', (quarter_id, time_slot[0]))
+                slots_created += 1
+            
+            # Map quarter number to month name
+            quarter_months = {1: 'February', 2: 'May', 3: 'August', 4: 'November'}
+            month_name = quarter_months.get(quarter_num, f'Q{quarter_num}')
+            quarter_name = f"{month_name} {year} - MCES Education"
+            
+            created_quarters.append({
+                'id': quarter_id,
+                'name': quarter_name,
+                'meeting_date': meeting_date,
+                'slots_created': slots_created,
+                'quarter_number': quarter_num
+            })
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"🎓 ADMIN ACTION: Created academic year {year} with {len(created_quarters)} quarters")
+        
+        return jsonify({
+            'message': f'🎉 SUCCESS! Academic year {year} created successfully!',
+            'year': year,
+            'count': len(created_quarters),
+            'quarters': created_quarters
+        }), 201
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Error creating academic year: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+@app.route('/api/admin/delete-academic-year/<int:year>', methods=['DELETE'])
+def delete_academic_year(year):
+    """Delete an entire academic year and all its data"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Count existing quarters for this year
+        cursor.execute('SELECT COUNT(*) FROM quarters WHERE year = ?', (year,))
+        quarter_count = cursor.fetchone()[0]
+        
+        if quarter_count == 0:
+            return jsonify({
+                'message': f'Academic year {year} does not exist',
+                'error_type': 'NotFoundError'
+            }), 404
+        
+        # Count registrations that will be deleted
+        cursor.execute('''
+            SELECT COUNT(*) FROM speaker_registrations 
+            WHERE lecture_slot_id IN (
+                SELECT id FROM lecture_slots 
+                WHERE quarter_id IN (
+                    SELECT id FROM quarters WHERE year = ?
+                )
+            )
+        ''', (year,))
+        registration_count = cursor.fetchone()[0]
+        
+        # Delete all data for this year (cascade delete)
+        cursor.execute('''
+            DELETE FROM speaker_registrations 
+            WHERE lecture_slot_id IN (
+                SELECT id FROM lecture_slots 
+                WHERE quarter_id IN (
+                    SELECT id FROM quarters WHERE year = ?
+                )
+            )
+        ''', (year,))
+        
+        cursor.execute('''
+            DELETE FROM lecture_slots 
+            WHERE quarter_id IN (
+                SELECT id FROM quarters WHERE year = ?
+            )
+        ''', (year,))
+        
+        cursor.execute('DELETE FROM quarters WHERE year = ?', (year,))
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"🗑️ ADMIN ACTION: Deleted academic year {year} ({quarter_count} quarters, {registration_count} registrations)")
+        
+        return jsonify({
+            'message': f'🎉 SUCCESS! Academic year {year} deleted successfully!',
+            'deleted_quarters': quarter_count,
+            'deleted_registrations': registration_count
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Error deleting academic year: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+@app.route('/api/admin/academic-years', methods=['GET'])
+def get_academic_years():
+    """Get all academic years with summary data"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                q.year,
+                COUNT(q.id) as quarter_count,
+                COUNT(sr.id) as registration_count,
+                MIN(q.meeting_date) as first_meeting,
+                MAX(q.meeting_date) as last_meeting
+            FROM quarters q
+            LEFT JOIN lecture_slots ls ON q.id = ls.quarter_id
+            LEFT JOIN speaker_registrations sr ON ls.id = sr.lecture_slot_id
+            GROUP BY q.year
+            ORDER BY q.year DESC
+        ''')
+        
+        years = cursor.fetchall()
+        
+        year_list = []
+        for year_data in years:
+            year_list.append({
+                'year': year_data[0],
+                'quarter_count': year_data[1],
+                'registration_count': year_data[2],
+                'first_meeting': year_data[3],
+                'last_meeting': year_data[4]
+            })
+        
+        conn.close()
+        return jsonify(year_list), 200
+        
+    except Exception as e:
+        return jsonify({
+            'message': f'Error getting academic years: {str(e)}',
             'error_type': type(e).__name__
         }), 500
 
@@ -460,7 +663,7 @@ def create_registration():
             'error_type': type(e).__name__
         }), 500
 
-# ADMIN ENDPOINTS (Simple version)
+# ADMIN ENDPOINTS
 
 @app.route('/api/admin/login', methods=['POST'])
 def admin_login():
